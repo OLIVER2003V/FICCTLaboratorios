@@ -1,0 +1,6 @@
+target/
+salida/
+config.properties
+.idea/
+.vscode/
+*.iml

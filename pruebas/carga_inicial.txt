@@ -1,0 +1,69 @@
+# Carga inicial de datos para el semestre 2-2026 (base recién creada, solo con el Encargado).
+# Ejecutar en modo local (no envía correos; las notificaciones salen por consola):
+#   cmd /c "java -Dfile.encoding=UTF-8 -jar target\SistemaLaboratorios.jar --local < pruebas\carga_inicial.txt"
+# Los usuarios usan direcciones "+" de Gmail: todo llega a la bandeja del Encargado.
+# Cambie nombres, códigos y correos por los reales antes de ejecutarlo si lo desea.
+
+:de venturavalverdeo@gmail.com
+
+# ===== CU1. Usuarios =====
+INSUSU["300001","Carlos","Gutiérrez Rocha","venturavalverdeo+doc1@gmail.com","70010001","DOC"]
+INSUSU["300002","Patricia","Suárez Vaca","venturavalverdeo+doc2@gmail.com","70010002","DOC"]
+INSUSU["300101","Luis","Fernández Mendoza","venturavalverdeo+aux1@gmail.com","70010101","AUX"]
+INSUSU["300102","Andrea","Cuéllar Justiniano","venturavalverdeo+aux2@gmail.com","70010102","AUX"]
+INSUSU["300201","Roberto","Paz Antelo","venturavalverdeo+dir@gmail.com","70010201","DIR"]
+
+# ===== CU2. Laboratorios, semestre y fechas bloqueadas =====
+INSLAB["LAB-41","Laboratorio 41","40","Módulo 236, piso 4"]
+INSLAB["LAB-42","Laboratorio 42","35","Módulo 236, piso 4"]
+INSLAB["LAB-43","Laboratorio 43","30","Módulo 236, piso 3"]
+INSLAB["LAB-44","Laboratorio 44","25","Módulo 236, piso 3"]
+INSSEM["2-2026","2026-08-03","2026-12-12"]
+ACTSEM["2-2026"]
+INSFEB["2026-11-02","FERIADO","Día de Todos Santos"]
+INSFEB["2026-11-21","MANTENIMIENTO","Revisión del cableado de red","LAB-42"]
+
+# ===== CU3. Horario base (11 clases desde CSV) =====
+:adjunto pruebas/horario_2-2026.csv
+CARHOR["*"]
+
+# ===== CU6. Inventario =====
+INSEQU["PC-L41-01","LAB-41","COMPUTADORA","Core i5, 16 GB RAM, monitor 22 pulgadas"]
+INSEQU["PC-L41-02","LAB-41","COMPUTADORA","Core i5, 16 GB RAM, monitor 22 pulgadas"]
+INSEQU["PC-L41-03","LAB-41","COMPUTADORA","Core i7, 16 GB RAM, monitor 24 pulgadas"]
+INSEQU["PROY-41","LAB-41","PROYECTOR","Epson PowerLite"]
+INSEQU["PC-L42-01","LAB-42","COMPUTADORA","Core i5, 8 GB RAM"]
+INSEQU["PROY-42","LAB-42","PROYECTOR","BenQ MX550"]
+INSEQU["PC-L43-01","LAB-43","COMPUTADORA","Ryzen 5, 16 GB RAM"]
+
+# ===== CU7. Turnos de auxiliares =====
+INSTUR["300101","LUNES","07:00","13:00"]
+INSTUR["300101","MIERCOLES","07:00","13:00"]
+INSTUR["300101","VIERNES","07:00","13:00"]
+INSTUR["300102","MARTES","07:00","13:00"]
+INSTUR["300102","JUEVES","07:00","13:00"]
+INSTUR["300102","LUNES","14:00","20:00","LAB-43"]
+
+# ===== CU4. Reservas (una aprobada y una pendiente) =====
+:de venturavalverdeo+doc2@gmail.com
+INSRES["LAB-43","2026-11-10","08:00","10:00","EXAMEN","Primer parcial INF312"]
+:de venturavalverdeo+doc1@gmail.com
+INSRES["LAB-44","2026-11-12","18:00","20:00","PRACTICA","Práctica de servidores web INF513"]
+:de venturavalverdeo@gmail.com
+APRRES["1"]
+
+# ===== CU6. Una incidencia y un objeto encontrado =====
+:de venturavalverdeo+doc1@gmail.com
+INSINC["PC-L41-02","Varias teclas del teclado no responden"]
+:de venturavalverdeo+aux1@gmail.com
+INSOBJ["LAB-41","Cargador de laptop HP"]
+
+# ===== CU5. Un mensaje interno =====
+ENVMSJ["300102","Hola Andrea, el proyector del LAB-41 tarda en encender, ojo en tu turno."]
+
+# ===== Verificación =====
+:de venturavalverdeo@gmail.com
+LISUSU["*"]
+LISHOR["*"]
+LISRES["*"]
+:salir
