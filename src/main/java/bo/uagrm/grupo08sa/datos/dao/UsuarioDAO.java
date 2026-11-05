@@ -14,7 +14,7 @@ import java.util.List;
 public class UsuarioDAO {
 
     private static final String SELECT_BASE =
-            "SELECT u.id, u.codigo, u.nombre, u.apellido, u.correo, u.telefono, u.rol_id, "
+            "SELECT u.id, u.codigo, u.nombre, u.apellido, u.correo, u.telefono, u.cargo, u.rol_id, "
             + "r.codigo AS rol_codigo, r.nombre AS rol_nombre, u.estado, u.creado_en "
             + "FROM usuario u JOIN rol r ON r.id = u.rol_id ";
 
@@ -142,6 +142,7 @@ public class UsuarioDAO {
         u.setApellido(rs.getString("apellido"));
         u.setCorreo(rs.getString("correo"));
         u.setTelefono(rs.getString("telefono"));
+        u.setCargo(rs.getString("cargo"));
         u.setRolId(rs.getInt("rol_id"));
         u.setRolCodigo(rs.getString("rol_codigo"));
         u.setRolNombre(rs.getString("rol_nombre"));

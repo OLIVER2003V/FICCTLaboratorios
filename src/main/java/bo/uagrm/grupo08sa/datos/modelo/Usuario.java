@@ -13,6 +13,7 @@ public class Usuario {
     private int rolId;
     private String rolCodigo;
     private String rolNombre;
+    private String cargo;
     private String estado;
     private Timestamp creadoEn;
 
@@ -42,6 +43,9 @@ public class Usuario {
 
     public String getRolNombre() { return rolNombre; }
     public void setRolNombre(String rolNombre) { this.rolNombre = rolNombre; }
+
+    public String getCargo() { return cargo; }
+    public void setCargo(String cargo) { this.cargo = cargo; }
 
     public String getEstado() { return estado; }
     public void setEstado(String estado) { this.estado = estado; }

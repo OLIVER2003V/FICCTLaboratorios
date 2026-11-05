@@ -1,0 +1,15 @@
+:de encargado.lab236@gmail.com
+
+INSLAB["LAB-41","Laboratorio 41","44","Módulo 236, 4to piso"]
+INSLAB["LAB-42","Laboratorio 42","1","Módulo 236, 4to piso"]
+INSLAB["LAB-43","Laboratorio 43","25","Módulo 236, 4to piso"]
+INSLAB["LAB-44","Laboratorio 44","40","Módulo 236, 4to piso"]
+INSLAB["LAB-45","Laboratorio 45","42","Módulo 236, 4to piso"]
+INSLAB["LAB-46","Laboratorio 46","40","Módulo 236, 4to piso"]
+INSLAB["LAB-47","Laboratorio 47","30","Módulo 236, 4to piso"]
+MODLAB["LAB-47","Laboratorio 47","30","Módulo 236, 4to piso","MANTENIMIENTO"]
+INSLAB["LAB-48","Laboratorio 48","30","Módulo 236, 4to piso"]
+MODLAB["LAB-48","Laboratorio 48","30","Módulo 236, 4to piso","MANTENIMIENTO"]
+INSLAB["AUDITORIO","Auditorio FICCT","120","Módulo 236, planta baja"]
+
+:salir

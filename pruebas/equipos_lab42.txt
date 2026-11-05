@@ -1,0 +1,8 @@
+:de encargado.lab236@gmail.com
+
+# Laboratorio 42: Solo cuenta con PC Docente (sin PCs de estudiantes)
+# IP: 172.20.173.2 | Subred: 172.20.173.0/24 | Gateway: 172.20.172.254 | Proxy: 172.20.172.254:3128 | Grupo: LAB236-42
+INSEQU["Lab42-Docente","LAB-42","COMPUTADORA","PC Docente - Win7 / Fedora 23 - Red LAB42"]
+
+:salir
+

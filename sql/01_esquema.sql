@@ -31,6 +31,7 @@ CREATE TABLE usuario (
   apellido  VARCHAR(60)  NOT NULL,
   correo    VARCHAR(100) NOT NULL UNIQUE,
   telefono  VARCHAR(20),
+  cargo     VARCHAR(60),
   rol_id    INT NOT NULL REFERENCES rol(id),
   estado    VARCHAR(10) NOT NULL DEFAULT 'ACTIVO'
             CHECK (estado IN ('ACTIVO','INACTIVO')),
@@ -175,14 +176,26 @@ CREATE TABLE permiso (
 -- Inventario, incidencias y objetos encontrados (CU6)
 CREATE TABLE equipo (
   id             SERIAL PRIMARY KEY,
-  codigo         VARCHAR(20) NOT NULL UNIQUE,
+  activo         VARCHAR(30),
+  codigo         VARCHAR(50) NOT NULL UNIQUE,
   laboratorio_id INT NOT NULL REFERENCES laboratorio(id),
-  tipo           VARCHAR(15) NOT NULL
-                 CHECK (tipo IN ('COMPUTADORA','PROYECTOR','COMPONENTE','SOFTWARE','OTRO')),
+  tipo           VARCHAR(50) NOT NULL,
   descripcion    VARCHAR(200) NOT NULL,
   estado         VARCHAR(15) NOT NULL DEFAULT 'OPERATIVO'
                  CHECK (estado IN ('OPERATIVO','EN_REPARACION','BAJA'))
 );
+CREATE TABLE equipo_red (
+  id          SERIAL PRIMARY KEY,
+  equipo_id   INT NOT NULL UNIQUE REFERENCES equipo(id) ON DELETE CASCADE,
+  ip          VARCHAR(45) NOT NULL,
+  mascara     VARCHAR(15) NOT NULL DEFAULT '255.255.255.0',
+  gateway     VARCHAR(45) NOT NULL DEFAULT '172.20.172.254',
+  dns1        VARCHAR(45) NOT NULL DEFAULT '10.10.0.251',
+  dns2        VARCHAR(45) NOT NULL DEFAULT '8.8.8.8',
+  proxy       VARCHAR(45) NOT NULL DEFAULT '172.20.172.254:3128',
+  grupo_red   VARCHAR(20) NOT NULL DEFAULT 'LAB41'
+);
+
 
 CREATE TABLE incidencia (
   id             SERIAL PRIMARY KEY,
@@ -246,6 +259,7 @@ INSERT INTO comando (nombre, descripcion) VALUES
  ('ENVMSJ','Enviar mensaje interno'), ('LISMSJ','Listar mensajes'),
  ('INSEQU','Registrar equipo'), ('MODEQU','Modificar equipo'),
  ('BAJEQU','Dar de baja equipo'), ('LISEQU','Listar inventario'),
+ ('LISRED','Listar red e IPs (exclusivo Encargados)'),
  ('INSINC','Reportar incidencia'), ('MODINC','Actualizar incidencia'),
  ('LISINC','Listar incidencias'), ('INSOBJ','Registrar objeto encontrado'),
  ('ENTOBJ','Registrar entrega de objeto'), ('LISOBJ','Listar objetos encontrados'),

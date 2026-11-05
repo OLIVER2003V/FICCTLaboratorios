@@ -49,7 +49,7 @@ public class HorarioDAO extends BaseDAO {
         return consultar(SELECT_BASE + "WHERE h.semestre_id = ? "
                 + "AND (CAST(? AS INTEGER) IS NULL OR h.laboratorio_id = ?) "
                 + "AND (CAST(? AS INTEGER) IS NULL OR h.dia_semana = ?) "
-                + "ORDER BY h.dia_semana, h.hora_inicio, l.codigo",
+                + "ORDER BY m.sigla, h.grupo, h.dia_semana, h.hora_inicio",
                 semestreId, laboratorioId, laboratorioId, dia, dia);
     }
 }

@@ -121,6 +121,7 @@ solicitante y al auxiliar de turno.
 | MODEQU | `MODEQU["PC-L41-01","LAB-41","COMPUTADORA","descripción","OPERATIVO"]` |
 | BAJEQU | `BAJEQU["PC-L41-01"]` |
 | LISEQU | `LISEQU["*"]`, `LISEQU["LAB-41"]`, `LISEQU["EN_REPARACION"]` |
+| LISRED | `LISRED["*"]`, `LISRED["LAB-41"]` (Solo Encargados: IPs, mascara, gateway, proxy, DNS) |
 | INSINC | `INSINC["PC-L41-01","No enciende el monitor"]` (DOC, AUX) |
 | MODINC | `MODINC["id","EN_ATENCION"]`, `MODINC["id","RESUELTA","solución"]` |
 | LISINC | `LISINC["*"]`, `LISINC["PENDIENTE"]`, `LISINC["LAB-41"]` |

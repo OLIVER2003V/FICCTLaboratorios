@@ -5,6 +5,7 @@ import bo.uagrm.grupo08sa.datos.dao.EquipoDAO;
 import bo.uagrm.grupo08sa.datos.dao.IncidenciaDAO;
 import bo.uagrm.grupo08sa.datos.dao.ObjetoEncontradoDAO;
 import bo.uagrm.grupo08sa.datos.modelo.Usuario;
+import bo.uagrm.grupo08sa.negocio.AccesoDenegadoException;
 import bo.uagrm.grupo08sa.negocio.Busquedas;
 import bo.uagrm.grupo08sa.negocio.Comando;
 import bo.uagrm.grupo08sa.negocio.Manejador;
@@ -21,8 +22,8 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * CU6. Gestión de Inventario, Incidencias y Objetos Encontrados:
- * INSEQU, MODEQU, BAJEQU, LISEQU, INSINC, MODINC, LISINC, INSOBJ, ENTOBJ, LISOBJ.
+ * CU6. Gestión de Inventario, Incidencias, Red y Objetos Encontrados:
+ * INSEQU, MODEQU, BAJEQU, LISEQU, LISRED, INSINC, MODINC, LISINC, INSOBJ, ENTOBJ, LISOBJ.
  */
 public class InventarioController {
 
@@ -30,7 +31,8 @@ public class InventarioController {
     private static final String[] ESTADOS_EQUIPO = {"OPERATIVO", "EN_REPARACION", "BAJA"};
     private static final String[] ESTADOS_INCIDENCIA = {"PENDIENTE", "EN_ATENCION", "RESUELTA"};
     private static final String[] ESTADOS_OBJETO = {"EN_CUSTODIA", "ENTREGADO"};
-    private static final String[] COLUMNAS_EQUIPO = {"Código", "Lab", "Tipo", "Descripción", "Estado"};
+    private static final String[] COLUMNAS_EQUIPO = {"Activo", "Lab", "Descripción", "Estado"};
+    private static final String[] COLUMNAS_RED = {"Activo", "Código", "IP Fija", "Máscara", "Gateway", "DNS", "Grupo Red"};
     private static final String[] COLUMNAS_INCIDENCIA =
             {"ID", "Equipo", "Lab", "Descripción", "Reportado por", "Fecha", "Estado", "Solución", "Resuelta"};
     private static final String[] COLUMNAS_OBJETO =
@@ -51,6 +53,7 @@ public class InventarioController {
         manejadores.put("MODEQU", this::modificarEquipo);
         manejadores.put("BAJEQU", this::darBajaEquipo);
         manejadores.put("LISEQU", this::listarEquipos);
+        manejadores.put("LISRED", this::listarRed);
         manejadores.put("INSINC", this::reportarIncidencia);
         manejadores.put("MODINC", this::actualizarIncidencia);
         manejadores.put("LISINC", this::listarIncidencias);
@@ -119,6 +122,32 @@ public class InventarioController {
             filas.add(filaEquipo(e));
         }
         return Resultado.tabla("Inventario", filas.size() + " equipo(s).", COLUMNAS_EQUIPO, filas);
+    }
+
+    // LISRED["*"]  LISRED["LAB-41"] (Solo Encargados)
+    public Resultado listarRed(Comando c, Usuario u) throws NegocioException, SQLException {
+        if (u == null || !"ENC".equalsIgnoreCase(u.getRolCodigo())) {
+            throw new AccesoDenegadoException("Solo el Encargado de Laboratorios puede consultar la configuración de red e IPs.");
+        }
+        c.exigirEntre(0, 1, "LISRED[\"*\"], LISRED[\"laboratorio\"]");
+        Integer labId = null;
+        if (c.cantidad() == 1 && !c.param(0).trim().equals("*")) {
+            labId = buscar.laboratorio(c.param(0)).entero("id");
+        }
+        List<String[]> filas = new ArrayList<>();
+        for (Fila r : equipoDAO.listarRed(labId)) {
+            filas.add(new String[]{
+                r.texto("activo") != null ? r.texto("activo") : "",
+                r.texto("codigo"),
+                r.texto("ip"),
+                r.texto("mascara"),
+                r.texto("gateway"),
+                r.texto("dns1"),
+                r.texto("grupo_red")
+            });
+        }
+        return Resultado.tabla("Configuración de Red e IPs (Privado Encargados)",
+                filas.size() + " equipo(s) con red asignada.", COLUMNAS_RED, filas);
     }
 
     // INSINC["PC-L41-01","No enciende el monitor"]
@@ -242,7 +271,15 @@ public class InventarioController {
     }
 
     private static String[] filaEquipo(Fila e) {
-        return new String[]{e.texto("codigo"), e.texto("lab"), e.texto("tipo"), e.texto("descripcion"), e.texto("estado")};
+        String lab = e.texto("lab");
+        if (lab.startsWith("LAB-")) {
+            lab = "236-" + lab.substring(4);
+        }
+        String act = e.texto("activo");
+        if (act == null || act.isBlank()) {
+            act = e.texto("codigo");
+        }
+        return new String[]{act, lab, e.texto("descripcion"), e.texto("estado")};
     }
 
     private static String[] filaIncidencia(Fila i) {
