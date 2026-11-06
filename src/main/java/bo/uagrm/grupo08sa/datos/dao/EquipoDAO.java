@@ -31,7 +31,10 @@ public class EquipoDAO extends BaseDAO {
 
     public List<Fila> listar(Integer laboratorioId, String estado) throws SQLException {
         return consultar(SELECT_BASE + "WHERE (CAST(? AS INTEGER) IS NULL OR e.laboratorio_id = ?) "
-                + "AND (CAST(? AS VARCHAR) IS NULL OR e.estado = ?) ORDER BY l.codigo, e.codigo",
+                + "AND (CAST(? AS VARCHAR) IS NULL OR e.estado = ?) ORDER BY "
+                + "CASE WHEN TRIM(e.codigo) ~ '^[0-9]+$' THEN 0 ELSE 1 END, "
+                + "CASE WHEN TRIM(e.codigo) ~ '^[0-9]+$' THEN TRIM(e.codigo)::numeric ELSE NULL END, "
+                + "LENGTH(TRIM(e.codigo)) ASC, TRIM(e.codigo) ASC",
                 laboratorioId, laboratorioId, estado, estado);
     }
 }

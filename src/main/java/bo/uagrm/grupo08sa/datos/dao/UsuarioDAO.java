@@ -14,7 +14,7 @@ import java.util.List;
 public class UsuarioDAO {
 
     private static final String SELECT_BASE =
-            "SELECT u.id, u.codigo, u.nombre, u.apellido, u.correo, u.telefono, u.rol_id, "
+            "SELECT u.id, u.codigo, u.nombre, u.apellido, u.correo, u.telefono, u.aula, u.gestion, u.rol_id, "
             + "r.codigo AS rol_codigo, r.nombre AS rol_nombre, u.estado, u.creado_en "
             + "FROM usuario u JOIN rol r ON r.id = u.rol_id ";
 
@@ -58,7 +58,7 @@ public class UsuarioDAO {
     }
 
     public int insertar(Usuario u) throws SQLException {
-        String sql = "INSERT INTO usuario (codigo, nombre, apellido, correo, telefono, rol_id) VALUES (?, ?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO usuario (codigo, nombre, apellido, correo, telefono, aula, gestion, rol_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
         try (Connection cn = Conexion.getConexion();
              PreparedStatement ps = cn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             ps.setString(1, u.getCodigo());
@@ -66,7 +66,9 @@ public class UsuarioDAO {
             ps.setString(3, u.getApellido());
             ps.setString(4, u.getCorreo());
             ps.setString(5, u.getTelefono());
-            ps.setInt(6, u.getRolId());
+            ps.setString(6, u.getAula());
+            ps.setString(7, u.getGestion());
+            ps.setInt(8, u.getRolId());
             ps.executeUpdate();
             try (ResultSet rs = ps.getGeneratedKeys()) {
                 rs.next();
@@ -76,14 +78,16 @@ public class UsuarioDAO {
     }
 
     public boolean actualizar(Usuario u) throws SQLException {
-        String sql = "UPDATE usuario SET nombre = ?, apellido = ?, correo = ?, telefono = ?, rol_id = ? WHERE id = ?";
+        String sql = "UPDATE usuario SET nombre = ?, apellido = ?, correo = ?, telefono = ?, aula = ?, gestion = ?, rol_id = ? WHERE id = ?";
         try (Connection cn = Conexion.getConexion(); PreparedStatement ps = cn.prepareStatement(sql)) {
             ps.setString(1, u.getNombre());
             ps.setString(2, u.getApellido());
             ps.setString(3, u.getCorreo());
             ps.setString(4, u.getTelefono());
-            ps.setInt(5, u.getRolId());
-            ps.setInt(6, u.getId());
+            ps.setString(5, u.getAula());
+            ps.setString(6, u.getGestion());
+            ps.setInt(7, u.getRolId());
+            ps.setInt(8, u.getId());
             return ps.executeUpdate() == 1;
         }
     }
@@ -109,7 +113,11 @@ public class UsuarioDAO {
             sql.append("AND u.estado = ? ");
             parametros.add(estado);
         }
-        sql.append("ORDER BY r.id, u.apellido, u.nombre");
+        sql.append("ORDER BY "
+                + "CASE WHEN TRIM(u.codigo) ~ '^[0-9]+$' THEN 0 ELSE 1 END, "
+                + "CASE WHEN TRIM(u.codigo) ~ '^[0-9]+$' THEN TRIM(u.codigo)::numeric ELSE NULL END, "
+                + "LENGTH(TRIM(u.codigo)) ASC, "
+                + "TRIM(u.codigo) ASC");
 
         List<Usuario> lista = new ArrayList<>();
         try (Connection cn = Conexion.getConexion(); PreparedStatement ps = cn.prepareStatement(sql.toString())) {
@@ -142,6 +150,8 @@ public class UsuarioDAO {
         u.setApellido(rs.getString("apellido"));
         u.setCorreo(rs.getString("correo"));
         u.setTelefono(rs.getString("telefono"));
+        u.setAula(rs.getString("aula"));
+        u.setGestion(rs.getString("gestion"));
         u.setRolId(rs.getInt("rol_id"));
         u.setRolCodigo(rs.getString("rol_codigo"));
         u.setRolNombre(rs.getString("rol_nombre"));

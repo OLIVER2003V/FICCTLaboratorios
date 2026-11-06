@@ -28,6 +28,8 @@ public class UsuarioController {
     private static final Pattern TELEFONO = Pattern.compile("^[0-9+\\- ]{6,20}$");
     private static final String[] COLUMNAS =
             {"Código", "Nombre", "Apellido", "Correo", "Teléfono", "Rol", "Estado"};
+    private static final String[] COLUMNAS_AUX =
+            {"Código", "Nombre", "Apellido", "Correo", "Teléfono", "Aula", "Gestión", "Rol", "Estado"};
 
     private final UsuarioDAO usuarioDAO = new UsuarioDAO();
     private final RolDAO rolDAO = new RolDAO();
@@ -41,8 +43,12 @@ public class UsuarioController {
     }
 
     // INSUSU["219001","Ana","Rojas","ana@gmail.com","70011223","DOC"]
+    // o INSUSU["219001","Ana","Rojas","ana@gmail.com","70011223","AUX","236-41","2-2026"]
     public Resultado registrar(Comando c, Usuario solicitante) throws NegocioException, SQLException {
-        c.exigirParametros(6, SINTAXIS_INSUSU);
+        if (c.cantidad() != 6 && c.cantidad() != 8) {
+            throw new NegocioException("Sintaxis: " + SINTAXIS_INSUSU + " o "
+                    + "INSUSU[\"codigo\",\"nombre\",\"apellido\",\"correo\",\"telefono\",\"rol\",\"aula\",\"gestion\"]");
+        }
         Usuario u = leerDatos(c);
 
         if (usuarioDAO.buscarPorCodigo(u.getCodigo()) != null) {
@@ -57,11 +63,19 @@ public class UsuarioController {
     }
 
     // MODUSU["219001","Ana","Rojas Paz","ana@gmail.com","70011223","AUX"]
+    // o MODUSU["219001","Ana","Rojas Paz","ana@gmail.com","70011223","AUX","236-41","2-2026"]
     public Resultado modificar(Comando c, Usuario solicitante) throws NegocioException, SQLException {
-        c.exigirParametros(6, SINTAXIS_MODUSU);
+        if (c.cantidad() != 6 && c.cantidad() != 8) {
+            throw new NegocioException("Sintaxis: " + SINTAXIS_MODUSU + " o "
+                    + "MODUSU[\"codigo\",\"nombre\",\"apellido\",\"correo\",\"telefono\",\"rol\",\"aula\",\"gestion\"]");
+        }
         Usuario existente = buscarExistente(c.param(0));
         Usuario u = leerDatos(c);
         u.setId(existente.getId());
+        if (c.cantidad() < 8) {
+            u.setAula(existente.getAula());
+            u.setGestion(existente.getGestion());
+        }
 
         if (usuarioDAO.existeCorreo(u.getCorreo(), u.getId())) {
             throw new NegocioException("El correo " + u.getCorreo() + " ya pertenece a otro usuario.");
@@ -124,14 +138,15 @@ public class UsuarioController {
             }
         }
 
+        boolean esAux = "AUX".equalsIgnoreCase(rol);
         List<String[]> filas = new ArrayList<>();
         for (Usuario u : usuarioDAO.listar(rol, estado)) {
-            filas.add(fila(u));
+            filas.add(esAux ? filaAux(u) : fila(u));
         }
         String filtro = (rol == null ? "todos los roles" : "rol " + rol)
                 + ", " + (estado == null ? "todos los estados" : "estado " + estado);
         return Resultado.tabla("Listado de usuarios", filas.size() + " usuario(s) — " + filtro + ".",
-                COLUMNAS, filas);
+                esAux ? COLUMNAS_AUX : COLUMNAS, filas);
     }
 
     private Usuario leerDatos(Comando c) throws NegocioException, SQLException {
@@ -159,6 +174,12 @@ public class UsuarioController {
         u.setApellido(apellido);
         u.setCorreo(correo);
         u.setTelefono(telefono.isEmpty() ? null : telefono);
+        if (c.cantidad() >= 8) {
+            String aula = c.param(6).trim();
+            String gestion = c.param(7).trim();
+            u.setAula(aula.isEmpty() ? null : aula);
+            u.setGestion(gestion.isEmpty() ? null : gestion);
+        }
         u.setRolId(rol.getId());
         u.setRolCodigo(rol.getCodigo());
         return u;
@@ -183,11 +204,27 @@ public class UsuarioController {
     }
 
     private static Resultado tablaDeUno(String titulo, String mensaje, Usuario u) {
-        return Resultado.tabla(titulo, mensaje, COLUMNAS, List.<String[]>of(fila(u)));
+        boolean esAux = "AUX".equalsIgnoreCase(u.getRolCodigo());
+        return Resultado.tabla(titulo, mensaje, esAux ? COLUMNAS_AUX : COLUMNAS,
+                List.<String[]>of(esAux ? filaAux(u) : fila(u)));
     }
 
     private static String[] fila(Usuario u) {
         return new String[]{u.getCodigo(), u.getNombre(), u.getApellido(), u.getCorreo(),
                 u.getTelefono() == null ? "" : u.getTelefono(), u.getRolNombre(), u.getEstado()};
+    }
+
+    private static String[] filaAux(Usuario u) {
+        return new String[]{
+                u.getCodigo(),
+                u.getNombre(),
+                u.getApellido(),
+                u.getCorreo(),
+                u.getTelefono() == null ? "" : u.getTelefono(),
+                u.getAula() == null ? "" : u.getAula(),
+                u.getGestion() == null ? "" : u.getGestion(),
+                u.getRolNombre(),
+                u.getEstado()
+        };
     }
 }

@@ -2,8 +2,10 @@ package bo.uagrm.grupo08sa.negocio.controladores;
 
 import bo.uagrm.grupo08sa.datos.Fila;
 import bo.uagrm.grupo08sa.datos.dao.EquipoDAO;
+import bo.uagrm.grupo08sa.datos.dao.EquipoRedDAO;
 import bo.uagrm.grupo08sa.datos.dao.IncidenciaDAO;
 import bo.uagrm.grupo08sa.datos.dao.ObjetoEncontradoDAO;
+import bo.uagrm.grupo08sa.datos.dao.SemestreDAO;
 import bo.uagrm.grupo08sa.datos.modelo.Usuario;
 import bo.uagrm.grupo08sa.negocio.Busquedas;
 import bo.uagrm.grupo08sa.negocio.Comando;
@@ -21,8 +23,8 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * CU6. Gestión de Inventario, Incidencias y Objetos Encontrados:
- * INSEQU, MODEQU, BAJEQU, LISEQU, INSINC, MODINC, LISINC, INSOBJ, ENTOBJ, LISOBJ.
+ * CU6. Gestión de Inventario, Incidencias, Objetos Encontrados y Red:
+ * INSEQU, MODEQU, BAJEQU, LISEQU, LISRED, INSINC, MODINC, LISINC, INSOBJ, ENTOBJ, LISOBJ.
  */
 public class InventarioController {
 
@@ -31,14 +33,18 @@ public class InventarioController {
     private static final String[] ESTADOS_INCIDENCIA = {"PENDIENTE", "EN_ATENCION", "RESUELTA"};
     private static final String[] ESTADOS_OBJETO = {"EN_CUSTODIA", "ENTREGADO"};
     private static final String[] COLUMNAS_EQUIPO = {"Código", "Lab", "Tipo", "Descripción", "Estado"};
+    private static final String[] COLUMNAS_RED =
+            {"Código", "Lab", "IP Fija", "Máscara", "Gateway", "DNS 1", "DNS 2", "Proxy", "Grupo Red"};
     private static final String[] COLUMNAS_INCIDENCIA =
             {"ID", "Equipo", "Lab", "Descripción", "Reportado por", "Fecha", "Estado", "Solución", "Resuelta"};
     private static final String[] COLUMNAS_OBJETO =
-            {"ID", "Lab", "Descripción", "Hallazgo", "Registrado por", "Estado", "Entregado a", "CI", "Entrega"};
+            {"ID", "Gestión", "Lab", "Aux. Encontró", "Descripción", "Hallazgo", "Aux. Devolvió", "Entregado a", "CI", "Entrega", "Estado"};
 
     private final EquipoDAO equipoDAO = new EquipoDAO();
+    private final EquipoRedDAO equipoRedDAO = new EquipoRedDAO();
     private final IncidenciaDAO incidenciaDAO = new IncidenciaDAO();
     private final ObjetoEncontradoDAO objetoDAO = new ObjetoEncontradoDAO();
+    private final SemestreDAO semestreDAO = new SemestreDAO();
     private final Busquedas buscar = new Busquedas();
     private final Notificaciones notificaciones;
 
@@ -51,6 +57,7 @@ public class InventarioController {
         manejadores.put("MODEQU", this::modificarEquipo);
         manejadores.put("BAJEQU", this::darBajaEquipo);
         manejadores.put("LISEQU", this::listarEquipos);
+        manejadores.put("LISRED", this::listarRed);
         manejadores.put("INSINC", this::reportarIncidencia);
         manejadores.put("MODINC", this::actualizarIncidencia);
         manejadores.put("LISINC", this::listarIncidencias);
@@ -119,6 +126,31 @@ public class InventarioController {
             filas.add(filaEquipo(e));
         }
         return Resultado.tabla("Inventario", filas.size() + " equipo(s).", COLUMNAS_EQUIPO, filas);
+    }
+
+    // LISRED["*"]  LISRED["LAB-41"]
+    public Resultado listarRed(Comando c, Usuario u) throws NegocioException, SQLException {
+        c.exigirEntre(0, 1, "LISRED[\"*\"] o LISRED[\"laboratorio\"]");
+        Integer labId = null;
+        if (c.cantidad() == 1 && !c.param(0).trim().equals("*")) {
+            labId = buscar.laboratorio(c.param(0)).entero("id");
+        }
+        List<String[]> filas = new ArrayList<>();
+        for (Fila r : equipoRedDAO.listar(labId)) {
+            filas.add(new String[]{
+                    r.texto("codigo"),
+                    r.texto("lab"),
+                    r.texto("ip"),
+                    r.texto("mascara"),
+                    r.texto("gateway"),
+                    r.texto("dns1"),
+                    r.texto("dns2"),
+                    r.texto("proxy"),
+                    r.texto("grupo_red")
+            });
+        }
+        return Resultado.tabla("Configuración de Red e IPs",
+                filas.size() + " equipo(s) con red asignada.", COLUMNAS_RED, filas);
     }
 
     // INSINC["PC-L41-01","No enciende el monitor"]
@@ -192,21 +224,27 @@ public class InventarioController {
 
     // INSOBJ["LAB-41","Mochila negra con cuadernos"]  INSOBJ["LAB-41","Celular Samsung","2026-10-28"]
     public Resultado registrarObjeto(Comando c, Usuario u) throws NegocioException, SQLException {
-        c.exigirEntre(2, 3, "INSOBJ[\"laboratorio\",\"descripcion\"] o INSOBJ[\"laboratorio\",\"descripcion\",\"fecha\"]");
+        c.exigirEntre(2, 4, "INSOBJ[\"laboratorio\",\"descripcion\"], INSOBJ[\"laboratorio\",\"descripcion\",\"fecha\"] o INSOBJ[\"laboratorio\",\"descripcion\",\"fecha\",\"aux_encontro\"]");
         Fila lab = buscar.laboratorio(c.param(0));
         String descripcion = Validar.texto(c.param(1), "descripción", 200);
         LocalDate fecha = c.paramOpcional(2).isEmpty() ? LocalDate.now() : Validar.fecha(c.param(2), "fecha de hallazgo");
         if (fecha.isAfter(LocalDate.now())) {
             throw new NegocioException("La fecha de hallazgo no puede ser futura.");
         }
-        int id = objetoDAO.insertar(lab.entero("id"), descripcion, fecha, u.getId());
+        String auxEncontro = c.cantidad() >= 4 ? Validar.texto(c.param(3), "auxiliar que encontró", 100) : u.getNombreCompleto();
+        Fila sem = semestreDAO.contenedor(fecha);
+        if (sem == null) {
+            sem = semestreDAO.obtenerActivo();
+        }
+        String gestion = sem != null ? sem.texto("gestion") : "2-2026";
+        int id = objetoDAO.insertar(lab.entero("id"), descripcion, fecha, u.getId(), gestion, auxEncontro);
         return Resultado.tabla("Objeto registrado", "El objeto quedó EN_CUSTODIA. Para entregarlo use ENTOBJ[\""
                 + id + "\",\"nombre\",\"CI\"].", COLUMNAS_OBJETO, List.<String[]>of(filaObjeto(objetoDAO.buscarPorId(id))));
     }
 
-    // ENTOBJ["3","Juan Pérez","8123456"]
+    // ENTOBJ["3","Juan Pérez","8123456"] o ENTOBJ["3","Juan Pérez","8123456","Auxiliar"]
     public Resultado entregarObjeto(Comando c, Usuario u) throws NegocioException, SQLException {
-        c.exigirParametros(3, "ENTOBJ[\"id\",\"nombre_de_quien_recibe\",\"ci\"]");
+        c.exigirEntre(3, 4, "ENTOBJ[\"id\",\"nombre_de_quien_recibe\",\"ci\"] o ENTOBJ[\"id\",\"nombre_de_quien_recibe\",\"ci\",\"aux_devolvio\"]");
         Fila obj = objetoDAO.buscarPorId(Validar.id(c.param(0), "el objeto"));
         if (obj == null) {
             throw new NegocioException("No existe el objeto #" + c.param(0) + ".");
@@ -216,8 +254,9 @@ public class InventarioController {
                     + " el " + obj.texto("fecha_entrega") + ".");
         }
         String receptor = Validar.texto(c.param(1), "nombre de quien recibe", 100);
-        String ci = Validar.texto(c.param(2), "CI", 15);
-        objetoDAO.entregar(obj.entero("id"), receptor, ci);
+        String ci = Validar.texto(c.param(2), "CI", 15).replaceAll("[^0-9]", "").trim();
+        String auxDevolvio = c.cantidad() >= 4 ? Validar.texto(c.param(3), "auxiliar que devolvió", 100) : u.getNombreCompleto();
+        objetoDAO.entregar(obj.entero("id"), receptor, ci, auxDevolvio);
         return Resultado.tabla("Objeto entregado", "Se registró la entrega a " + receptor + ".",
                 COLUMNAS_OBJETO, List.<String[]>of(filaObjeto(objetoDAO.buscarPorId(obj.entero("id")))));
     }
@@ -251,7 +290,20 @@ public class InventarioController {
     }
 
     private static String[] filaObjeto(Fila o) {
-        return new String[]{o.texto("id"), o.texto("lab"), o.texto("descripcion"), o.texto("fecha_hallazgo"),
-                o.texto("registrado"), o.texto("estado"), o.texto("entregado_a"), o.texto("ci_receptor"), o.texto("fecha_entrega")};
+        String auxEnc = o.texto("aux_encontro");
+        if (auxEnc == null || auxEnc.isBlank()) auxEnc = o.texto("registrado");
+        return new String[]{
+                o.texto("id"),
+                o.texto("gestion"),
+                o.texto("lab"),
+                auxEnc,
+                o.texto("descripcion"),
+                o.texto("fecha_hallazgo"),
+                o.texto("aux_devolvio"),
+                o.texto("entregado_a"),
+                o.texto("ci_receptor"),
+                o.texto("fecha_entrega"),
+                o.texto("estado")
+        };
     }
 }

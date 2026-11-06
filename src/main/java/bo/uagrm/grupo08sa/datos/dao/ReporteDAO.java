@@ -12,7 +12,10 @@ import java.util.List;
 public class ReporteDAO extends BaseDAO {
 
     public List<Fila> laboratorios() throws SQLException {
-        return consultar("SELECT id, codigo, nombre, estado FROM laboratorio ORDER BY codigo");
+        return consultar("SELECT id, codigo, nombre, estado FROM laboratorio ORDER BY "
+                + "CASE WHEN TRIM(codigo) ~ '^[0-9]+$' THEN 0 ELSE 1 END, "
+                + "CASE WHEN TRIM(codigo) ~ '^[0-9]+$' THEN TRIM(codigo)::numeric ELSE NULL END, "
+                + "LENGTH(TRIM(codigo)) ASC, TRIM(codigo) ASC");
     }
 
     /** Clases de los semestres que se superponen con el rango, con las fechas de su semestre. */

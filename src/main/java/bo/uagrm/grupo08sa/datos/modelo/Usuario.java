@@ -10,6 +10,8 @@ public class Usuario {
     private String apellido;
     private String correo;
     private String telefono;
+    private String aula;
+    private String gestion;
     private int rolId;
     private String rolCodigo;
     private String rolNombre;
@@ -33,6 +35,12 @@ public class Usuario {
 
     public String getTelefono() { return telefono; }
     public void setTelefono(String telefono) { this.telefono = telefono; }
+
+    public String getAula() { return aula; }
+    public void setAula(String aula) { this.aula = aula; }
+
+    public String getGestion() { return gestion; }
+    public void setGestion(String gestion) { this.gestion = gestion; }
 
     public int getRolId() { return rolId; }
     public void setRolId(int rolId) { this.rolId = rolId; }

@@ -31,6 +31,8 @@ CREATE TABLE usuario (
   apellido  VARCHAR(60)  NOT NULL,
   correo    VARCHAR(100) NOT NULL UNIQUE,
   telefono  VARCHAR(20),
+  aula      VARCHAR(20),
+  gestion   VARCHAR(10),
   rol_id    INT NOT NULL REFERENCES rol(id),
   estado    VARCHAR(10) NOT NULL DEFAULT 'ACTIVO'
             CHECK (estado IN ('ACTIVO','INACTIVO')),
@@ -184,6 +186,18 @@ CREATE TABLE equipo (
                  CHECK (estado IN ('OPERATIVO','EN_REPARACION','BAJA'))
 );
 
+CREATE TABLE equipo_red (
+  id         SERIAL PRIMARY KEY,
+  equipo_id  INT NOT NULL REFERENCES equipo(id),
+  ip         VARCHAR(45) NOT NULL,
+  mascara    VARCHAR(15) NOT NULL DEFAULT '255.255.255.0',
+  gateway    VARCHAR(45) NOT NULL DEFAULT '172.20.172.254',
+  dns1       VARCHAR(45) NOT NULL DEFAULT '10.10.0.251',
+  dns2       VARCHAR(45) NOT NULL DEFAULT '8.8.8.8',
+  proxy      VARCHAR(45) NOT NULL DEFAULT '172.20.172.254:3128',
+  grupo_red  VARCHAR(20) NOT NULL DEFAULT 'LAB41'
+);
+
 CREATE TABLE incidencia (
   id             SERIAL PRIMARY KEY,
   equipo_id      INT NOT NULL REFERENCES equipo(id),
@@ -254,7 +268,8 @@ INSERT INTO comando (nombre, descripcion) VALUES
  ('INSPMS','Registrar permiso'), ('LISASI','Consultar asistencia'),
  ('REPOCU','Reporte de ocupación'), ('REPRES','Reporte de reservas'),
  ('REPINC','Reporte de incidencias'), ('REPASI','Reporte de asistencia'),
- ('ESTSEM','Estadísticas del semestre'), ('AYUDA','Listar comandos permitidos');
+ ('ESTSEM','Estadísticas del semestre'), ('AYUDA','Listar comandos permitidos'),
+ ('LISRED','Listar configuración de red e IPs (Encargados y Auxiliares)');
 
 -- El Encargado puede ejecutar todos los comandos
 INSERT INTO rol_comando (rol_id, comando_id)
@@ -268,6 +283,6 @@ SELECT r.id, c.id FROM rol r JOIN comando c ON
    'LISRES','INSINC','LISINC','ENVMSJ','LISMSJ','AYUDA'))
  OR (r.codigo = 'AUX' AND c.nombre IN ('LISLAB','LISHOR','CONDIS','INSRES','CANRES',
    'LISRES','SOLPMT','ACEPMT','RECPMT','LISPMT','ENVMSJ','LISMSJ','INSINC','LISINC','INSOBJ',
-   'ENTOBJ','LISOBJ','LISTUR','MARENT','MARSAL','AYUDA'))
+   'ENTOBJ','LISOBJ','LISTUR','MARENT','MARSAL','AYUDA','LISRED'))
  OR (r.codigo = 'DIR' AND c.nombre IN ('LISLAB','LISHOR','CONDIS','INSRES','CANRES',
    'LISRES','ENVMSJ','LISMSJ','REPOCU','REPRES','REPINC','REPASI','ESTSEM','AYUDA'));

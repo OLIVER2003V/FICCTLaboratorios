@@ -64,10 +64,10 @@ Roles: `ENC` Encargado, `DOC` Docente, `AUX` Auxiliar, `DIR` Director de Carrera
 ### CU1. Usuarios (ENC)
 | Comando | Sintaxis |
 |---|---|
-| INSUSU | `INSUSU["codigo","nombre","apellido","correo","telefono","rol"]` |
-| MODUSU | `MODUSU["codigo","nombre","apellido","correo","telefono","rol"]` |
+| INSUSU | `INSUSU["codigo","nombre","apellido","correo","telefono","rol"]` o `INSUSU["...","rol","aula","gestion"]` |
+| MODUSU | `MODUSU["codigo","nombre","apellido","correo","telefono","rol"]` o `MODUSU["...","rol","aula","gestion"]` |
 | BAJUSU / ACTUSU | `BAJUSU["codigo"]` / `ACTUSU["codigo"]` |
-| LISUSU | `LISUSU["*"]`, `LISUSU["DOC"]`, `LISUSU["INACTIVO"]`, `LISUSU["DOC","ACTIVO"]` |
+| LISUSU | `LISUSU["*"]`, `LISUSU["AUX"]` (muestra Aula y Gestión), `LISUSU["DOC"]`, `LISUSU["INACTIVO"]` |
 
 ### CU2. Perfiles y configuración semestral (ENC; LISLAB todos)
 | Comando | Sintaxis |
@@ -121,6 +121,7 @@ solicitante y al auxiliar de turno.
 | MODEQU | `MODEQU["PC-L41-01","LAB-41","COMPUTADORA","descripción","OPERATIVO"]` |
 | BAJEQU | `BAJEQU["PC-L41-01"]` |
 | LISEQU | `LISEQU["*"]`, `LISEQU["LAB-41"]`, `LISEQU["EN_REPARACION"]` |
+| LISRED | `LISRED["*"]`, `LISRED["LAB-41"]` (ENC, AUX: IPs, gateways, DNS, proxies de equipos) |
 | INSINC | `INSINC["PC-L41-01","No enciende el monitor"]` (DOC, AUX) |
 | MODINC | `MODINC["id","EN_ATENCION"]`, `MODINC["id","RESUELTA","solución"]` |
 | LISINC | `LISINC["*"]`, `LISINC["PENDIENTE"]`, `LISINC["LAB-41"]` |

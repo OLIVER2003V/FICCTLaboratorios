@@ -26,7 +26,10 @@ public class LaboratorioDAO extends BaseDAO {
     }
 
     public List<Fila> listar(String estado) throws SQLException {
-        return consultar("SELECT * FROM laboratorio WHERE (CAST(? AS VARCHAR) IS NULL OR estado = ?) ORDER BY codigo",
+        return consultar("SELECT * FROM laboratorio WHERE (CAST(? AS VARCHAR) IS NULL OR estado = ?) ORDER BY "
+                + "CASE WHEN TRIM(codigo) ~ '^[0-9]+$' THEN 0 ELSE 1 END, "
+                + "CASE WHEN TRIM(codigo) ~ '^[0-9]+$' THEN TRIM(codigo)::numeric ELSE NULL END, "
+                + "LENGTH(TRIM(codigo)) ASC, TRIM(codigo) ASC",
                 estado, estado);
     }
 }
