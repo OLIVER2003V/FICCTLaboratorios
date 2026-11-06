@@ -22,6 +22,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -34,7 +35,7 @@ public class HorarioController {
 
     private static final String DATOS_CLASE = "\"laboratorio\",\"dia\",\"inicio\",\"fin\",\"sigla\",\"materia\",\"grupo\",\"docente\"";
     private static final String[] COLUMNAS =
-            {"ID", "Lab", "Día", "Inicio", "Fin", "Sigla", "Materia", "Grupo", "Docente"};
+            {"Sigla", "Grupo", "Materia", "Docente", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"};
 
     private final HorarioDAO horarioDAO = new HorarioDAO();
     private final MateriaDAO materiaDAO = new MateriaDAO();
@@ -43,6 +44,43 @@ public class HorarioController {
     private final FechaBloqueadaDAO fechaBloqueadaDAO = new FechaBloqueadaDAO();
     private final Busquedas buscar = new Busquedas();
     private final Disponibilidad disponibilidad = new Disponibilidad();
+
+    /** Representa una fila consolidada por materia y grupo en la matriz semanal. */
+    private static class FilaMatriz {
+        final String sigla;
+        final String grupo;
+        final String materia;
+        final String docente;
+        final String[] dias = new String[6];
+
+        FilaMatriz(String sigla, String grupo, String materia, String docente) {
+            this.sigla = sigla;
+            this.grupo = grupo;
+            this.materia = materia;
+            this.docente = docente;
+            for (int i = 0; i < 6; i++) {
+                this.dias[i] = "";
+            }
+        }
+
+        void agregarSesion(int diaSemana, String horario) {
+            int idx = diaSemana - 1;
+            if (idx >= 0 && idx < 6) {
+                if (dias[idx].isEmpty()) {
+                    dias[idx] = horario;
+                } else {
+                    dias[idx] = dias[idx] + " / " + horario;
+                }
+            }
+        }
+
+        String[] aFila() {
+            return new String[]{
+                    sigla, grupo, materia, docente,
+                    dias[0], dias[1], dias[2], dias[3], dias[4], dias[5]
+            };
+        }
+    }
 
     /** Datos de una clase ya validados. */
     private record DatosClase(Fila lab, int dia, LocalTime inicio, LocalTime fin, int materiaId,
@@ -65,8 +103,9 @@ public class HorarioController {
         DatosClase d = validar(c.getParametros().toArray(new String[0]), 0, sem.entero("id"), 0);
         int id = horarioDAO.insertar(sem.entero("id"), d.lab().entero("id"), d.materiaId(), d.docente().getId(),
                 d.grupo(), d.dia(), d.inicio(), d.fin());
-        return Resultado.tabla("Clase registrada", "La clase se agregó al horario del semestre " + sem.texto("gestion") + ".",
-                COLUMNAS, List.<String[]>of(fila(horarioDAO.buscarPorId(id))));
+        return Resultado.tabla("Clase registrada", "La clase se agregó al horario de " + d.lab().texto("codigo")
+                        + " en el semestre " + sem.texto("gestion") + ".",
+                COLUMNAS, List.<String[]>of(filaMatriz(horarioDAO.buscarPorId(id), true)));
     }
 
     // CARHOR["*"] con el archivo .xlsx o .csv adjunto
@@ -103,8 +142,8 @@ public class HorarioController {
         DatosClase d = validar(c.getParametros().toArray(new String[0]), 1, sem.entero("id"), clase.entero("id"));
         horarioDAO.actualizar(clase.entero("id"), d.lab().entero("id"), d.materiaId(), d.docente().getId(),
                 d.grupo(), d.dia(), d.inicio(), d.fin());
-        return Resultado.tabla("Clase modificada", "Se actualizó la clase #" + clase.texto("id") + ".",
-                COLUMNAS, List.<String[]>of(fila(horarioDAO.buscarPorId(clase.entero("id")))));
+        return Resultado.tabla("Clase modificada", "Se actualizó la clase en " + d.lab().texto("codigo") + ".",
+                COLUMNAS, List.<String[]>of(filaMatriz(horarioDAO.buscarPorId(clase.entero("id")), true)));
     }
 
     // ELIHOR["15"]
@@ -113,7 +152,7 @@ public class HorarioController {
         Fila clase = buscarClase(c.param(0), buscar.semestreActivo());
         horarioDAO.eliminar(clase.entero("id"));
         return Resultado.tabla("Clase eliminada", "Se quitó la clase del horario; ese horario queda libre.",
-                COLUMNAS, List.<String[]>of(fila(clase)));
+                COLUMNAS, List.<String[]>of(filaMatriz(clase, true)));
     }
 
     // LISHOR["*"]  LISHOR["LAB-41"]  LISHOR["LUNES"]  LISHOR["LAB-41","LUNES"]
@@ -122,6 +161,7 @@ public class HorarioController {
         Fila sem = buscar.semestreActivo();
         Integer labId = null;
         Integer dia = null;
+        Fila labFila = null;
         for (String p : c.getParametros()) {
             if (p.trim().equals("*")) {
                 continue;
@@ -129,14 +169,44 @@ public class HorarioController {
             if (Validar.esDia(p)) {
                 dia = Validar.dia(p);
             } else {
-                labId = buscar.laboratorio(p).entero("id");
+                labFila = buscar.laboratorio(p);
+                labId = labFila.entero("id");
             }
         }
-        List<String[]> filas = new ArrayList<>();
-        for (Fila h : horarioDAO.listar(sem.entero("id"), labId, dia)) {
-            filas.add(fila(h));
+
+        List<Fila> registros = horarioDAO.listar(sem.entero("id"), labId, dia);
+        Map<String, FilaMatriz> mapa = new LinkedHashMap<>();
+        boolean incluirLab = (labId == null);
+
+        for (Fila h : registros) {
+            String clave = h.texto("sigla") + "|" + h.texto("grupo");
+            FilaMatriz m = mapa.computeIfAbsent(clave, k ->
+                    new FilaMatriz(h.texto("sigla"), h.texto("grupo"), h.texto("materia"), h.texto("docente")));
+
+            String franja = Formato.hora(h.hora("hora_inicio")) + " - " + Formato.hora(h.hora("hora_fin"));
+            if (incluirLab && h.texto("lab") != null) {
+                franja += " (" + h.texto("lab") + ")";
+            }
+            m.agregarSesion(h.entero("dia_semana"), franja);
         }
-        return Resultado.tabla("Horario " + sem.texto("gestion"), filas.size() + " clase(s).", COLUMNAS, filas);
+
+        List<String[]> filas = new ArrayList<>();
+        for (FilaMatriz m : mapa.values()) {
+            filas.add(m.aFila());
+        }
+
+        String titulo;
+        if (labFila != null) {
+            titulo = "Horario " + labFila.texto("codigo") + " — Semestre " + sem.texto("gestion");
+        } else {
+            titulo = "Horario Semestre " + sem.texto("gestion");
+        }
+        if (dia != null) {
+            titulo += " (" + Formato.dia(dia) + ")";
+        }
+
+        String detalle = filas.size() + " materia(s)/grupo(s) (" + registros.size() + " sesiones semanales).";
+        return Resultado.tabla(titulo, detalle, COLUMNAS, filas);
     }
 
     // CONDIS["2026-11-03","08:00","10:00"]  (laboratorios libres en esa franja)
@@ -205,8 +275,9 @@ public class HorarioController {
     /** Valida los 8 datos de una clase a partir de la posición desde y verifica que no choque. */
     private DatosClase validar(String[] p, int desde, int semestreId, int excluirId) throws NegocioException, SQLException {
         Fila lab = buscar.laboratorio(p[desde]);
-        if ("INHABILITADO".equals(lab.texto("estado"))) {
-            throw new NegocioException("El laboratorio " + lab.texto("codigo") + " está INHABILITADO.");
+        if (!"DISPONIBLE".equals(lab.texto("estado"))) {
+            throw new NegocioException("El laboratorio " + lab.texto("codigo") + " está en estado "
+                    + lab.texto("estado") + " y no está disponible para pasar clases.");
         }
         int dia = Validar.dia(p[desde + 1]);
         LocalTime inicio = Validar.hora(p[desde + 2], "hora de inicio");
@@ -232,13 +303,28 @@ public class HorarioController {
     private Fila buscarClase(String id, Fila sem) throws NegocioException, SQLException {
         Fila clase = horarioDAO.buscarPorId(Validar.id(id, "la clase"));
         if (clase == null || clase.entero("semestre_id") != sem.entero("id")) {
-            throw new NegocioException("No existe la clase #" + id + " en el semestre activo. Vea los IDs con LISHOR[\"*\"].");
+            throw new NegocioException("No existe la clase #" + id + " en el semestre activo.");
         }
         return clase;
     }
 
-    private static String[] fila(Fila h) {
-        return new String[]{h.texto("id"), h.texto("lab"), Formato.dia(h.entero("dia_semana")), h.texto("hora_inicio"),
-                h.texto("hora_fin"), h.texto("sigla"), h.texto("materia"), h.texto("grupo"), h.texto("docente")};
+    private static String[] filaMatriz(Fila h, boolean incluirLab) {
+        String[] r = new String[10];
+        r[0] = h.texto("sigla");
+        r[1] = h.texto("grupo");
+        r[2] = h.texto("materia");
+        r[3] = h.texto("docente");
+        for (int i = 4; i < 10; i++) {
+            r[i] = "";
+        }
+        int dia = h.entero("dia_semana");
+        if (dia >= 1 && dia <= 6) {
+            String franja = Formato.hora(h.hora("hora_inicio")) + " - " + Formato.hora(h.hora("hora_fin"));
+            if (incluirLab && h.texto("lab") != null) {
+                franja += " (" + h.texto("lab") + ")";
+            }
+            r[3 + dia] = franja;
+        }
+        return r;
     }
 }

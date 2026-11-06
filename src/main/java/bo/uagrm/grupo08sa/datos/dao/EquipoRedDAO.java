@@ -8,7 +8,7 @@ import java.util.List;
 public class EquipoRedDAO extends BaseDAO {
 
     private static final String SELECT_BASE =
-            "SELECT e.codigo, l.codigo AS lab, er.ip, er.mascara, er.gateway, er.dns1, er.dns2, er.proxy, er.grupo_red "
+            "SELECT e.activo, e.codigo, l.codigo AS lab, er.ip, er.mascara, er.gateway, er.dns1, er.dns2, er.proxy, er.grupo_red "
             + "FROM equipo_red er "
             + "JOIN equipo e ON e.id = er.equipo_id "
             + "JOIN laboratorio l ON l.id = e.laboratorio_id ";

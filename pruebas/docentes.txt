@@ -1,0 +1,32 @@
+:de encargado.lab236@gmail.com
+
+# Lista de 27 Docentes FICCT con códigos correlativos (001 a 027)
+INSUSU["001","NANCY","ABARCA SOTA","nabarca@uagrm.edu","70000010","DOC"]
+INSUSU["002","UBALDO","PEREZ FERREIRA","uperez@uagrm.edu","70000035","DOC"]
+INSUSU["003","EVANS","BALCAZAR VEIZAGA","ebalcazar@uagrm.edu","70000036","DOC"]
+INSUSU["004","EDWIN","CALLE TERRAZAS","ecalle@uagrm.edu","70000036","DOC"]
+INSUSU["005","CORRADO","VALLET VALLET","cvallet@uagrm.edu","70000038","DOC"]
+INSUSU["006","VICTOR FERNANDO","MONRROY DIPP","vmonrroy@uagrm.edu","70000052","DOC"]
+INSUSU["007","MIGUEL JESUS","PEINADO PEREIRA","mpeinado@uagrm.edu","70000055","DOC"]
+INSUSU["008","MODESTO FRANKLIN","CALDERON FLORES","mcalderon@uagrm.edu","70000059","DOC"]
+INSUSU["009","ROLANDO ANTONIO","MARTINEZ CANEDO","rmartinez@uagrm.edu","70000064","DOC"]
+INSUSU["010","MARIO MILTON","LOPEZ WINNIPEG","mlopezw@uagrm.edu","70000072","DOC"]
+INSUSU["011","ANGELICA","GARZON CUELLAR","agarzon@uagrm.edu","70000081","DOC"]
+INSUSU["012","JOSE SAID","HINOJOSA SAAVEDRA","jhinojosa@uagrm.edu","70000085","DOC"]
+INSUSU["013","RICARDO","ZUNA VILLAGOMEZ","rzuna@uagrm.edu","70000088","DOC"]
+INSUSU["014","JORGE MARCELO","ROSALES FUENTES","jrosales@uagrm.edu","70000088","DOC"]
+INSUSU["015","MARIO","CAMPOS BARRERA","mcampos@uagrm.edu","70000094","DOC"]
+INSUSU["016","EDWIN","VARGAS YAPURA","evargas@uagrm.edu","70000095","DOC"]
+INSUSU["017","SHARON KENNY","ALIAGA HOWARD","saliaga@uagrm.edu","70000096","DOC"]
+INSUSU["018","ALBERTO","MOLLO MAMANI","amollo@uagrm.edu","70000097","DOC"]
+INSUSU["019","LUIS PERCY","TAPIA FLORES","ltapia@uagrm.edu","70000098","DOC"]
+INSUSU["020","JUAN CARLOS ALBERTO","CONTRERAS VILLEGAS","jcontreras@uagrm.edu","70000100","DOC"]
+INSUSU["021","VALENTIN VICTOR","FLORES GUZMAN","vflores@uagrm.edu","70000102","DOC"]
+INSUSU["022","ANDRES","CARRENO PEREIRA","acarreno@uagrm.edu","70000103","DOC"]
+INSUSU["023","MARY DUNNIA","LOPEZ NEGRETTY","mlopez@uagrm.edu","70000105","DOC"]
+INSUSU["024","MARCOS OSCAR","FLORES FLORES","mflores@uagrm.edu","70000109","DOC"]
+INSUSU["025","JOSUE OBED","VEIZAGA GONZALES","jveizaga@uagrm.edu","70000111","DOC"]
+INSUSU["026","GINO","BARROSO VIRUEZ","gbarroso@uagrm.edu","70000116","DOC"]
+INSUSU["027","JOSE GABRIEL","SANCHEZ HERVAS","jsanchez@uagrm.edu","70000141","DOC"]
+
+:salir

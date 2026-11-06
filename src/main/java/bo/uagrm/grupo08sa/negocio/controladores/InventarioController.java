@@ -7,6 +7,7 @@ import bo.uagrm.grupo08sa.datos.dao.IncidenciaDAO;
 import bo.uagrm.grupo08sa.datos.dao.ObjetoEncontradoDAO;
 import bo.uagrm.grupo08sa.datos.dao.SemestreDAO;
 import bo.uagrm.grupo08sa.datos.modelo.Usuario;
+import bo.uagrm.grupo08sa.negocio.AccesoDenegadoException;
 import bo.uagrm.grupo08sa.negocio.Busquedas;
 import bo.uagrm.grupo08sa.negocio.Comando;
 import bo.uagrm.grupo08sa.negocio.Manejador;
@@ -32,9 +33,9 @@ public class InventarioController {
     private static final String[] ESTADOS_EQUIPO = {"OPERATIVO", "EN_REPARACION", "BAJA"};
     private static final String[] ESTADOS_INCIDENCIA = {"PENDIENTE", "EN_ATENCION", "RESUELTA"};
     private static final String[] ESTADOS_OBJETO = {"EN_CUSTODIA", "ENTREGADO"};
-    private static final String[] COLUMNAS_EQUIPO = {"Código", "Lab", "Tipo", "Descripción", "Estado"};
+    private static final String[] COLUMNAS_EQUIPO = {"Activo", "Lab", "Descripción", "Estado"};
     private static final String[] COLUMNAS_RED =
-            {"Código", "Lab", "IP Fija", "Máscara", "Gateway", "DNS 1", "DNS 2", "Proxy", "Grupo Red"};
+            {"Activo", "Código", "Lab", "IP Fija", "Máscara", "Gateway", "DNS 1", "DNS 2", "Proxy", "Grupo Red"};
     private static final String[] COLUMNAS_INCIDENCIA =
             {"ID", "Equipo", "Lab", "Descripción", "Reportado por", "Fecha", "Estado", "Solución", "Resuelta"};
     private static final String[] COLUMNAS_OBJETO =
@@ -138,6 +139,7 @@ public class InventarioController {
         List<String[]> filas = new ArrayList<>();
         for (Fila r : equipoRedDAO.listar(labId)) {
             filas.add(new String[]{
+                    r.texto("activo") != null ? r.texto("activo") : "",
                     r.texto("codigo"),
                     r.texto("lab"),
                     r.texto("ip"),
@@ -281,7 +283,15 @@ public class InventarioController {
     }
 
     private static String[] filaEquipo(Fila e) {
-        return new String[]{e.texto("codigo"), e.texto("lab"), e.texto("tipo"), e.texto("descripcion"), e.texto("estado")};
+        String lab = e.texto("lab");
+        if (lab.startsWith("LAB-")) {
+            lab = "236-" + lab.substring(4);
+        }
+        String act = e.texto("activo");
+        if (act == null || act.isBlank()) {
+            act = e.texto("codigo");
+        }
+        return new String[]{act, lab, e.texto("descripcion"), e.texto("estado")};
     }
 
     private static String[] filaIncidencia(Fila i) {

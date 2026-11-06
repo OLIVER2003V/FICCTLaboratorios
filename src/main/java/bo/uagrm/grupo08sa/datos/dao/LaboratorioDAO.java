@@ -8,7 +8,11 @@ import java.util.List;
 public class LaboratorioDAO extends BaseDAO {
 
     public Fila buscarPorCodigo(String codigo) throws SQLException {
-        return consultarUno("SELECT * FROM laboratorio WHERE UPPER(codigo) = UPPER(?)", codigo);
+        String c = codigo.trim().toUpperCase();
+        String alt1 = c.startsWith("236-") ? "LAB-" + c.substring(4) : c;
+        String alt2 = c.startsWith("LAB-") ? "236-" + c.substring(4) : c;
+        String alt3 = "LAB-" + c;
+        return consultarUno("SELECT * FROM laboratorio WHERE UPPER(codigo) IN (?, ?, ?, ?)", c, alt1, alt2, alt3);
     }
 
     public Fila buscarPorId(int id) throws SQLException {
