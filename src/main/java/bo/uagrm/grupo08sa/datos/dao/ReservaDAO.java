@@ -55,7 +55,7 @@ public class ReservaDAO extends BaseDAO {
     /** solicitanteId y estado opcionales (null = todos). */
     public List<Fila> listar(Integer solicitanteId, String estado) throws SQLException {
         return consultar(SELECT_BASE + "WHERE (CAST(? AS INTEGER) IS NULL OR r.solicitante_id = ?) "
-                + "AND (CAST(? AS VARCHAR) IS NULL OR r.estado = ?) ORDER BY r.fecha DESC, r.hora_inicio",
+                + "AND (CAST(? AS VARCHAR) IS NULL OR r.estado = ?) ORDER BY r.id ASC",
                 solicitanteId, solicitanteId, estado, estado);
     }
 }
