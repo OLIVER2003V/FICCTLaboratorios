@@ -23,6 +23,8 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -101,11 +103,21 @@ public class AsistenciaController {
         } else {
             auxId = c.cantidad() == 1 ? buscar.usuario(c.param(0)).getId() : null;
         }
-        List<String[]> filas = new ArrayList<>();
+
+        // Agrupar turnos por (auxiliar, horario, lab) para que los nombres no se repitan 5 veces
+        Map<String, GrupoTurno> grupos = new LinkedHashMap<>();
         for (Fila t : turnoDAO.listar(sem.entero("id"), auxId)) {
-            filas.add(filaTurno(t));
+            String clave = t.texto("auxiliar_codigo") + "|" + t.texto("hora_inicio") + "|"
+                    + t.texto("hora_fin") + "|" + t.texto("lab");
+            grupos.computeIfAbsent(clave, k -> new GrupoTurno(t)).agregarDia(t.entero("dia_semana"));
         }
-        return Resultado.tabla("Turnos " + sem.texto("gestion"), filas.size() + " turno(s).", COLUMNAS_TURNO, filas);
+
+        List<String[]> filas = new ArrayList<>();
+        for (GrupoTurno g : grupos.values()) {
+            filas.add(g.aFila());
+        }
+        return Resultado.tabla("Turnos " + sem.texto("gestion"), filas.size() + " auxiliar(es) asignado(s).",
+                COLUMNAS_TURNO, filas);
     }
 
     // MARENT["*"]
@@ -276,9 +288,72 @@ public class AsistenciaController {
         return String.join(", ", partes);
     }
 
+    private static String abreviaturaDia(int d) {
+        return switch (d) {
+            case 1 -> "Lu";
+            case 2 -> "Ma";
+            case 3 -> "Mi";
+            case 4 -> "Ju";
+            case 5 -> "Vi";
+            case 6 -> "Sa";
+            default -> "Do";
+        };
+    }
+
     private static String[] filaTurno(Fila t) {
-        return new String[]{t.texto("id"), t.texto("auxiliar"), Formato.dia(t.entero("dia_semana")),
-                t.texto("hora_inicio"), t.texto("hora_fin"), t.texto("lab").isEmpty() ? "General" : t.texto("lab")};
+        return new String[]{
+                t.texto("auxiliar_codigo"),
+                t.texto("auxiliar"),
+                abreviaturaDia(t.entero("dia_semana")),
+                Formato.hora(t.hora("hora_inicio")),
+                Formato.hora(t.hora("hora_fin")),
+                t.texto("lab").isEmpty() ? "General" : t.texto("lab")
+        };
+    }
+
+    private static class GrupoTurno {
+        final String codigo;
+        final String auxiliar;
+        final LocalTime inicio;
+        final LocalTime fin;
+        final String lab;
+        final List<Integer> dias = new ArrayList<>();
+
+        GrupoTurno(Fila t) {
+            this.codigo = t.texto("auxiliar_codigo");
+            this.auxiliar = t.texto("auxiliar");
+            this.inicio = t.hora("hora_inicio");
+            this.fin = t.hora("hora_fin");
+            this.lab = t.texto("lab").isEmpty() ? "General" : t.texto("lab");
+        }
+
+        void agregarDia(int d) {
+            if (!dias.contains(d)) dias.add(d);
+        }
+
+        String[] aFila() {
+            Collections.sort(dias);
+            String textoDias;
+            if (dias.size() == 5 && dias.get(0) == 1 && dias.get(4) == 5) {
+                textoDias = "Lu-Ma-Mi-Ju-Vi";
+            } else if (dias.size() == 4 && dias.get(0) == 1 && dias.get(3) == 4) {
+                textoDias = "Lu-Ma-Mi-Ju";
+            } else {
+                List<String> nombres = new ArrayList<>();
+                for (int d : dias) {
+                    nombres.add(abreviaturaDia(d));
+                }
+                textoDias = String.join("-", nombres);
+            }
+            return new String[]{
+                    codigo,
+                    auxiliar,
+                    textoDias,
+                    Formato.hora(inicio),
+                    Formato.hora(fin),
+                    lab
+            };
+        }
     }
 
     private static String[] filaAsistencia(Fila a) {

@@ -28,9 +28,13 @@ public class App {
             case "--local" -> new ConsolaLocal().iniciar();
             case "--probar" -> probarConexiones();
             case "--crear-bd" -> crearBaseDeDatos();
+            case "--cargar-turnos" -> cargarTurnos();
+            case "--cargar-permutas" -> cargarPermutas();
+            case "--actualizar-inventario" -> actualizarInventario();
+            case "--restaurar-objetos" -> restaurarObjetos();
             case "--reiniciar-bd" -> reiniciarBaseDeDatos();
             default -> System.out.println("Modo desconocido: " + modo
-                    + ". Use --una-vez, --local, --probar, --crear-bd o --reiniciar-bd.");
+                    + ". Use --una-vez, --local, --probar, --crear-bd, --cargar-turnos, --cargar-permutas, --actualizar-inventario, --restaurar-objetos o --reiniciar-bd.");
         }
     }
 
@@ -77,5 +81,29 @@ public class App {
         InicializadorBD.ejecutarScript(Path.of("sql", "01_esquema.sql"));
         InicializadorBD.ejecutarScript(Path.of("sql", "02_datos_iniciales.sql"));
         System.out.println("Base de datos creada con los roles, comandos, permisos y el Encargado inicial.");
+    }
+
+    private static void cargarTurnos() throws Exception {
+        System.out.println("Cargando turnos de auxiliares (semestre 2-2026, 4 franjas horarias)...");
+        InicializadorBD.ejecutarScript(Path.of("sql", "03_turnos_auxiliares.sql"));
+        System.out.println("Turnos cargados exitosamente (75 turnos registrados de Lunes a Viernes).");
+    }
+
+    private static void cargarPermutas() throws Exception {
+        System.out.println("Cargando permutas y mensajes de prueba (semestre 2-2026, época de exámenes)...");
+        InicializadorBD.ejecutarScript(Path.of("sql", "04_datos_permutas_mensajes.sql"));
+        System.out.println("Permutas y mensajes cargados exitosamente.");
+    }
+
+    private static void actualizarInventario() throws Exception {
+        System.out.println("Actualizando formato de inventario (CPUs: PC-DOC, PC-01... | Monitores: MONITOR-DOC, MONITOR-01...)...");
+        InicializadorBD.ejecutarScript(Path.of("sql", "05_actualizar_inventario_formato.sql"));
+        System.out.println("Inventario actualizado y ordenado exitosamente para todos los laboratorios.");
+    }
+
+    private static void restaurarObjetos() throws Exception {
+        System.out.println("Restaurando auxiliares en objetos encontrados (108 registros)...");
+        InicializadorBD.ejecutarScript(Path.of("sql", "06_restaurar_auxiliares_objetos.sql"));
+        System.out.println("Objetos encontrados actualizados con sus auxiliares reales exitosamente.");
     }
 }

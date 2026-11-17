@@ -11,7 +11,7 @@ public class EquipoDAO extends BaseDAO {
             "SELECT e.*, l.codigo AS lab FROM equipo e JOIN laboratorio l ON l.id = e.laboratorio_id ";
 
     public Fila buscarPorCodigo(String codigo) throws SQLException {
-        return consultarUno(SELECT_BASE + "WHERE UPPER(e.codigo) = UPPER(?) OR UPPER(e.activo) = UPPER(?)", codigo, codigo);
+        return consultarUno(SELECT_BASE + "WHERE UPPER(e.codigo) = UPPER(?) OR UPPER(e.activo) = UPPER(?) OR UPPER(e.descripcion) = UPPER(?)", codigo, codigo, codigo);
     }
 
     public int insertar(String codigo, int laboratorioId, String tipo, String descripcion) throws SQLException {
@@ -31,10 +31,20 @@ public class EquipoDAO extends BaseDAO {
 
     public List<Fila> listar(Integer laboratorioId, String estado) throws SQLException {
         return consultar(SELECT_BASE + "WHERE (CAST(? AS INTEGER) IS NULL OR e.laboratorio_id = ?) "
-                + "AND (CAST(? AS VARCHAR) IS NULL OR e.estado = ?) ORDER BY l.codigo, "
-                + "CASE WHEN TRIM(e.codigo) ~ '^[0-9]+$' THEN 0 ELSE 1 END, "
-                + "CASE WHEN TRIM(e.codigo) ~ '^[0-9]+$' THEN TRIM(e.codigo)::numeric ELSE NULL END, "
-                + "LENGTH(TRIM(e.codigo)) ASC, TRIM(e.codigo) ASC",
+                + "AND (CAST(? AS VARCHAR) IS NULL OR e.estado = ?) "
+                + "ORDER BY l.codigo, "
+                + "CASE "
+                + "  WHEN (UPPER(e.descripcion) LIKE '%CPU%' OR UPPER(e.codigo) LIKE '%PC-%') AND UPPER(e.descripcion) NOT LIKE '%MONITOR%' THEN 1 "
+                + "  WHEN UPPER(e.descripcion) LIKE '%MONITOR%' THEN 2 "
+                + "  WHEN UPPER(e.descripcion) LIKE '%ESTABILIZADOR%' THEN 3 "
+                + "  WHEN UPPER(e.descripcion) LIKE '%MESA%' THEN 4 "
+                + "  WHEN UPPER(e.descripcion) LIKE '%SILLA%' THEN 5 "
+                + "  WHEN UPPER(e.descripcion) LIKE '%PROYECTOR%' THEN 6 "
+                + "  WHEN UPPER(e.descripcion) LIKE '%SWITCH%' OR UPPER(e.descripcion) LIKE '%ROUTER%' THEN 7 "
+                + "  ELSE 8 "
+                + "END, "
+                + "e.descripcion ASC, "
+                + "e.activo ASC",
                 laboratorioId, laboratorioId, estado, estado);
     }
 

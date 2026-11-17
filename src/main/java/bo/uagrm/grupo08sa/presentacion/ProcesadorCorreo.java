@@ -50,10 +50,14 @@ public class ProcesadorCorreo {
         while (true) {
             try {
                 revisarBuzon();
-            } catch (IOException e) {
+            } catch (Exception e) {
                 log("No se pudo revisar el buzón: " + e.getMessage());
             }
-            gestor.ejecutarTareasProgramadas();
+            try {
+                gestor.ejecutarTareasProgramadas();
+            } catch (Exception e) {
+                log("Error en tareas automáticas: " + e.getMessage());
+            }
             try {
                 Thread.sleep(intervalo * 1000L);
             } catch (InterruptedException e) {

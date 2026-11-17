@@ -36,7 +36,7 @@ public class TurnoDAO extends BaseDAO {
 
     public List<Fila> listar(int semestreId, Integer auxiliarId) throws SQLException {
         return consultar(SELECT_BASE + "WHERE t.semestre_id = ? AND (CAST(? AS INTEGER) IS NULL OR t.auxiliar_id = ?) "
-                + "ORDER BY t.dia_semana, t.hora_inicio, u.apellido", semestreId, auxiliarId, auxiliarId);
+                + "ORDER BY t.hora_inicio, u.apellido, t.dia_semana", semestreId, auxiliarId, auxiliarId);
     }
 
     public List<Fila> delDia(int semestreId, int dia) throws SQLException {

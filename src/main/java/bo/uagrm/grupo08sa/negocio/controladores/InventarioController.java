@@ -19,6 +19,7 @@ import bo.uagrm.grupo08sa.negocio.Validar;
 import java.sql.SQLException;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -123,8 +124,10 @@ public class InventarioController {
             }
         }
         List<String[]> filas = new ArrayList<>();
+        Map<String, Integer> cpuCount = new HashMap<>();
+        Map<String, Integer> monCount = new HashMap<>();
         for (Fila e : equipoDAO.listar(labId, estado)) {
-            filas.add(filaEquipo(e));
+            filas.add(formatearFilaInventario(e, cpuCount, monCount));
         }
         return Resultado.tabla("Inventario", filas.size() + " equipo(s).", COLUMNAS_EQUIPO, filas);
     }
@@ -292,6 +295,58 @@ public class InventarioController {
             act = e.texto("codigo");
         }
         return new String[]{act, lab, e.texto("descripcion"), e.texto("estado")};
+    }
+
+    private static String[] formatearFilaInventario(Fila e, Map<String, Integer> cpuCount, Map<String, Integer> monCount) {
+        String lab = e.texto("lab");
+        if (lab.startsWith("LAB-")) {
+            lab = "236-" + lab.substring(4);
+        }
+        String act = e.texto("activo");
+        if (act == null || act.isBlank()) {
+            act = e.texto("codigo");
+        }
+
+        String rawDesc = e.texto("descripcion");
+        String rawTipo = e.texto("tipo");
+        String rawCod = e.texto("codigo");
+
+        boolean esMon = rawDesc != null && rawDesc.toUpperCase().contains("MONITOR");
+        boolean esCpu = !esMon && (
+                (rawDesc != null && rawDesc.toUpperCase().contains("CPU"))
+                || (rawCod != null && rawCod.toUpperCase().contains("PC-"))
+        );
+
+        String descFinal;
+        String estadoFinal = e.texto("estado");
+
+        if (esCpu) {
+            int n = cpuCount.getOrDefault(lab, 0);
+            cpuCount.put(lab, n + 1);
+            descFinal = (n == 0) ? "CPU (PC- DOC)" : String.format("CPU (PC-%02d)", n);
+            if (("236-42".equals(lab) || "LAB-42".equals(lab)) && n > 0) {
+                estadoFinal = "BAJA";
+            }
+        } else if (esMon) {
+            int n = monCount.getOrDefault(lab, 0);
+            monCount.put(lab, n + 1);
+            descFinal = (n == 0) ? "MONITOR - DOC" : String.format("MONITOR - %02d", n);
+            if (("236-42".equals(lab) || "LAB-42".equals(lab)) && n > 0) {
+                estadoFinal = "BAJA";
+            }
+        } else {
+            if (rawDesc != null && rawDesc.toUpperCase().startsWith("MESA")) {
+                descFinal = "MESA";
+            } else {
+                descFinal = rawDesc;
+            }
+        }
+
+        if ("236-47".equals(lab) || "LAB-47".equals(lab) || "236-48".equals(lab) || "LAB-48".equals(lab)) {
+            estadoFinal = "BAJA";
+        }
+
+        return new String[]{act, lab, descFinal, estadoFinal};
     }
 
     private static String[] filaIncidencia(Fila i) {

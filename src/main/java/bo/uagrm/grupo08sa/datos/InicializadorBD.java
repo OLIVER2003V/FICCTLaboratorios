@@ -30,6 +30,10 @@ public final class InicializadorBD {
     /** El driver de PostgreSQL acepta varias sentencias separadas por ';' en un solo execute(). */
     public static void ejecutarScript(Path archivo) throws IOException, SQLException {
         String sql = Files.readString(archivo, StandardCharsets.UTF_8);
+        if (sql.startsWith("\uFEFF")) {
+            sql = sql.substring(1);
+        }
+        sql = sql.trim();
         try (Connection cn = Conexion.getConexion(); Statement st = cn.createStatement()) {
             cn.setAutoCommit(false);
             try {
