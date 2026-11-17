@@ -33,9 +33,10 @@ public class App {
             case "--actualizar-inventario" -> actualizarInventario();
             case "--restaurar-objetos" -> restaurarObjetos();
             case "--cargar-incidencias" -> cargarIncidencias();
+            case "--verificar-tablas" -> verificarTablas();
             case "--reiniciar-bd" -> reiniciarBaseDeDatos();
             default -> System.out.println("Modo desconocido: " + modo
-                    + ". Use --una-vez, --local, --probar, --crear-bd, --cargar-turnos, --cargar-permutas, --actualizar-inventario, --restaurar-objetos, --cargar-incidencias o --reiniciar-bd.");
+                    + ". Use --una-vez, --local, --probar, --crear-bd, --cargar-turnos, --cargar-permutas, --actualizar-inventario, --restaurar-objetos, --cargar-incidencias, --verificar-tablas o --reiniciar-bd.");
         }
     }
 
@@ -112,5 +113,32 @@ public class App {
         System.out.println("Cargando incidencias de prueba (18 fallas en diversos laboratorios)...");
         InicializadorBD.ejecutarScript(Path.of("sql", "07_datos_incidencias.sql"));
         System.out.println("Incidencias cargadas exitosamente.");
+    }
+
+    private static void verificarTablas() {
+        try (java.sql.Connection cn = bo.uagrm.grupo08sa.datos.Conexion.getConexion();
+             java.sql.Statement st = cn.createStatement()) {
+            java.sql.ResultSet rs = st.executeQuery(
+                    "SELECT table_name FROM information_schema.tables WHERE table_schema = 'sislab' ORDER BY table_name");
+            java.util.List<String> tablas = new java.util.ArrayList<>();
+            while (rs.next()) {
+                tablas.add(rs.getString(1));
+            }
+            System.out.println("==========================================================");
+            System.out.println("  ESTADO DE TODAS LAS TABLAS EN LA BASE DE DATOS (sislab)");
+            System.out.println("==========================================================");
+            for (String t : tablas) {
+                try (java.sql.ResultSet crs = st.executeQuery("SELECT COUNT(*) FROM sislab." + t)) {
+                    if (crs.next()) {
+                        int c = crs.getInt(1);
+                        String estado = c > 0 ? "[LLENA] -> " + c + " filas" : "[VACIA] -> 0 filas";
+                        System.out.printf("%-22s : %s%n", t, estado);
+                    }
+                }
+            }
+            System.out.println("==========================================================");
+        } catch (Exception e) {
+            System.err.println("Error al verificar tablas: " + e.getMessage());
+        }
     }
 }
