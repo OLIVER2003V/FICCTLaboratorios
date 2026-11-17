@@ -30,8 +30,7 @@ public final class Conexion {
         ultimoUso = ahora;
         if (real == null || real.isClosed() || (inactiva && !real.isValid(5))) {
             cerrarSilencioso();
-            real = DriverManager.getConnection(
-                    Config.get("db.url"), Config.get("db.usuario"), Config.get("db.contrasena"));
+            real = conectarConFallback();
         }
         // Cada DAO recibe la conexión en modo autocommit, aunque otro la haya cambiado
         real.setAutoCommit(true);
@@ -46,6 +45,51 @@ public final class Conexion {
                         throw e.getCause();
                     }
                 });
+    }
+
+    private static Connection conectarConFallback() throws SQLException {
+        String urlConfig = Config.get("db.url");
+        String usuario = Config.get("db.usuario");
+        String pass = Config.get("db.contrasena");
+
+        java.util.List<String> urls = new java.util.ArrayList<>();
+        urls.add(urlConfig);
+
+        if (urlConfig != null && urlConfig.contains("tecnoweb.org.bo")) {
+            String[] hosts = {"mail.tecnoweb.org.bo", "tecnoweb.org.bo", "www.tecnoweb.org.bo", "db.tecnoweb.org.bo"};
+            for (String h : hosts) {
+                String candidate = urlConfig.replaceFirst("://[^:/]+(:|/)", "://" + h + "$1");
+                if (!urls.contains(candidate)) {
+                    urls.add(candidate);
+                }
+            }
+        }
+
+        SQLException ultimoError = null;
+        for (String url : urls) {
+            try {
+                String urlConTimeout = url.contains("?") ? url + "&connectTimeout=4" : url + "?connectTimeout=4";
+                Connection c = DriverManager.getConnection(urlConTimeout, usuario, pass);
+                if (c != null && !c.isClosed()) {
+                    System.out.println("[BD] Conectado exitosamente con: " + url);
+                    return c;
+                }
+            } catch (SQLException e) {
+                ultimoError = e;
+                String detalle = e.getCause() != null ? " (" + e.getCause().getClass().getSimpleName() + ": " + e.getCause().getMessage() + ")" : "";
+                System.err.println("[BD-PROBANDO] Falló " + url + " -> " + e.getMessage() + detalle);
+                String msg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
+                if (msg.contains("password") || msg.contains("autenticación") || msg.contains("authentication")) {
+                    throw e;
+                }
+            }
+        }
+        if (ultimoError != null) {
+            String detalle = ultimoError.getCause() != null ? " (" + ultimoError.getCause().getMessage() + ")" : "";
+            System.err.println("[BD-DETALLE] Intento fallido de conexión a PostgreSQL: " + ultimoError.getMessage() + detalle);
+            throw ultimoError;
+        }
+        throw new SQLException("No se pudo establecer conexión a la base de datos.");
     }
 
     private static void cerrarSilencioso() {

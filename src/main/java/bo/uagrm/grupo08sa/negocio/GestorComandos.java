@@ -59,8 +59,9 @@ public class GestorComandos {
             registrar(comando, "ERROR", e.getMessage());
             return Resultado.error(e.getMessage());
         } catch (SQLException e) {
-            System.err.println("[BD] " + e.getMessage());
-            registrar(comando, "ERROR", "BD: " + e.getMessage());
+            String detalle = e.getCause() != null ? " (" + e.getCause().getMessage() + ")" : "";
+            System.err.println("[BD] " + e.getMessage() + detalle);
+            registrar(comando, "ERROR", "BD: " + e.getMessage() + detalle);
             return Resultado.error("Ocurrió un error en la base de datos al procesar " + comando.getNombre()
                     + ". Intente nuevamente o consulte con el Encargado.");
         }
@@ -71,7 +72,8 @@ public class GestorComandos {
         try {
             bitacoraDAO.insertar(remitente, null, asunto, "ERROR", detalle);
         } catch (SQLException e) {
-            System.err.println("[BITACORA] " + e.getMessage());
+            String detalleErr = e.getCause() != null ? " (" + e.getCause().getMessage() + ")" : "";
+            System.err.println("[BITACORA] " + e.getMessage() + detalleErr);
         }
         return Resultado.error(detalle);
     }
