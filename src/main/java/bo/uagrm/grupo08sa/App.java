@@ -32,9 +32,10 @@ public class App {
             case "--cargar-permutas" -> cargarPermutas();
             case "--actualizar-inventario" -> actualizarInventario();
             case "--restaurar-objetos" -> restaurarObjetos();
+            case "--cargar-incidencias" -> cargarIncidencias();
             case "--reiniciar-bd" -> reiniciarBaseDeDatos();
             default -> System.out.println("Modo desconocido: " + modo
-                    + ". Use --una-vez, --local, --probar, --crear-bd, --cargar-turnos, --cargar-permutas, --actualizar-inventario, --restaurar-objetos o --reiniciar-bd.");
+                    + ". Use --una-vez, --local, --probar, --crear-bd, --cargar-turnos, --cargar-permutas, --actualizar-inventario, --restaurar-objetos, --cargar-incidencias o --reiniciar-bd.");
         }
     }
 
@@ -105,5 +106,11 @@ public class App {
         System.out.println("Restaurando auxiliares en objetos encontrados (108 registros)...");
         InicializadorBD.ejecutarScript(Path.of("sql", "06_restaurar_auxiliares_objetos.sql"));
         System.out.println("Objetos encontrados actualizados con sus auxiliares reales exitosamente.");
+    }
+
+    private static void cargarIncidencias() throws Exception {
+        System.out.println("Cargando incidencias de prueba (18 fallas en diversos laboratorios)...");
+        InicializadorBD.ejecutarScript(Path.of("sql", "07_datos_incidencias.sql"));
+        System.out.println("Incidencias cargadas exitosamente.");
     }
 }

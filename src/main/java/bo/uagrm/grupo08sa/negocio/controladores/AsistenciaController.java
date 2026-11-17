@@ -1,5 +1,7 @@
 package bo.uagrm.grupo08sa.negocio.controladores;
 
+import bo.uagrm.grupo08sa.Config;
+
 import bo.uagrm.grupo08sa.datos.Fila;
 import bo.uagrm.grupo08sa.datos.dao.AsistenciaDAO;
 import bo.uagrm.grupo08sa.datos.dao.FechaBloqueadaDAO;
@@ -255,7 +257,7 @@ public class AsistenciaController {
             int responsable = buscar.responsableDeTurno(t, hoy);
             boolean conPermiso = permisoDAO.existe(responsable, hoy);
             asistenciaDAO.insertar(t.entero("id"), responsable, hoy, null, conPermiso ? "PERMISO" : "FALTA");
-            if (!conPermiso) {
+            if (!conPermiso && Config.getBoolean("asistencia.notificar_faltas", false)) {
                 String texto = "No se registró entrada al turno #" + t.texto("id") + " de hoy "
                         + Formato.franja(t.hora("hora_inicio"), t.hora("hora_fin"))
                         + (t.texto("lab").isEmpty() ? "" : " (" + t.texto("lab") + ")") + "; se registró FALTA.";

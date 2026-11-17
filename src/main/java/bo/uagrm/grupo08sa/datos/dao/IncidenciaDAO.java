@@ -8,7 +8,7 @@ import java.util.List;
 public class IncidenciaDAO extends BaseDAO {
 
     private static final String SELECT_BASE =
-            "SELECT i.*, e.codigo AS equipo, e.estado AS equipo_estado, l.codigo AS lab, "
+            "SELECT i.*, COALESCE(NULLIF(e.activo, ''), e.codigo) AS equipo, e.estado AS equipo_estado, l.codigo AS lab, "
             + "u.nombre || ' ' || u.apellido AS reportado FROM incidencia i "
             + "JOIN equipo e ON e.id = i.equipo_id JOIN laboratorio l ON l.id = e.laboratorio_id "
             + "JOIN usuario u ON u.id = i.reportado_por ";

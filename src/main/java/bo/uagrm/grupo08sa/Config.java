@@ -39,6 +39,16 @@ public final class Config {
         return valor.trim();
     }
 
+    public static String get(String clave, String porDefecto) {
+        String valor = props.getProperty(clave);
+        return valor != null ? valor.trim() : porDefecto;
+    }
+
+    public static boolean getBoolean(String clave, boolean porDefecto) {
+        String valor = props.getProperty(clave);
+        return valor != null ? Boolean.parseBoolean(valor.trim()) : porDefecto;
+    }
+
     public static int getInt(String clave) {
         return Integer.parseInt(get(clave));
     }

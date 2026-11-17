@@ -350,7 +350,11 @@ public class InventarioController {
     }
 
     private static String[] filaIncidencia(Fila i) {
-        return new String[]{i.texto("id"), i.texto("equipo"), i.texto("lab"), i.texto("descripcion"), i.texto("reportado"),
+        String lab = i.texto("lab");
+        if (lab != null && lab.startsWith("LAB-")) {
+            lab = "236-" + lab.substring(4);
+        }
+        return new String[]{i.texto("id"), i.texto("equipo"), lab, i.texto("descripcion"), i.texto("reportado"),
                 i.texto("fecha_reporte"), i.texto("estado"), i.texto("solucion"), i.texto("fecha_solucion")};
     }
 
