@@ -202,17 +202,29 @@ public class PermutaController {
     public Resultado listarMensajes(Comando c, Usuario u) throws NegocioException, SQLException {
         c.exigirEntre(0, 1, "LISMSJ[\"*\"] o LISMSJ[\"NOLEIDOS\"]");
         boolean soloNoLeidos = c.cantidad() == 1 && Validar.opcion(c.param(0), "filtro", "NOLEIDOS").equals("NOLEIDOS");
+        boolean esEncargado = "ENC".equals(u.getRolCodigo());
         List<String[]> filas = new ArrayList<>();
         int nuevos = 0;
-        for (Fila m : mensajeDAO.recibidos(u.getId(), soloNoLeidos)) {
+        List<Fila> lista = esEncargado ? mensajeDAO.todos(soloNoLeidos) : mensajeDAO.recibidos(u.getId(), soloNoLeidos);
+        for (Fila m : lista) {
             boolean leido = Boolean.TRUE.equals(m.get("leido"));
             nuevos += leido ? 0 : 1;
-            filas.add(new String[]{m.texto("id"), m.texto("enviado_en"), m.texto("remitente") + " (" + m.texto("remitente_codigo") + ")",
-                    m.texto("contenido"), leido ? "Leído" : "NUEVO"});
+            if (esEncargado) {
+                filas.add(new String[]{m.texto("id"), m.texto("enviado_en"),
+                        m.texto("remitente") + " (" + m.texto("remitente_codigo") + ")",
+                        m.texto("destinatario"),
+                        m.texto("contenido"), leido ? "Leído" : "NUEVO"});
+            } else {
+                filas.add(new String[]{m.texto("id"), m.texto("enviado_en"),
+                        m.texto("remitente") + " (" + m.texto("remitente_codigo") + ")",
+                        m.texto("contenido"), leido ? "Leído" : "NUEVO"});
+            }
         }
         mensajeDAO.marcarLeidos(u.getId());
-        return Resultado.tabla("Mensajes recibidos", filas.size() + " mensaje(s), " + nuevos + " nuevo(s).",
-                new String[]{"ID", "Fecha", "De", "Mensaje", "Estado"}, filas);
+        String[] columnas = esEncargado
+                ? new String[]{"ID", "Fecha", "De", "Para", "Mensaje", "Estado"}
+                : new String[]{"ID", "Fecha", "De", "Mensaje", "Estado"};
+        return Resultado.tabla("Mensajes", filas.size() + " mensaje(s), " + nuevos + " nuevo(s).", columnas, filas);
     }
 
     private Fila buscarPermuta(String id) throws NegocioException, SQLException {

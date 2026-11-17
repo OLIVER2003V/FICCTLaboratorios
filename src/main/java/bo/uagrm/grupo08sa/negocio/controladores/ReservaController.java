@@ -28,7 +28,7 @@ import java.util.Map;
  */
 public class ReservaController {
 
-    private static final String[] TIPOS = {"EXAMEN", "RECUPERACION", "PRACTICA", "EVENTO"};
+    private static final String[] TIPOS = {"EXAMEN", "RECUPERACION", "PRACTICA", "EVENTO", "DEFENSA DE PROYECTO", "DEFENSA"};
     private static final String[] ESTADOS = {"PENDIENTE", "APROBADA", "RECHAZADA", "CANCELADA"};
     private static final String[] COLUMNAS =
             {"ID", "Lab", "Fecha", "Inicio", "Fin", "Tipo", "Motivo", "Solicitante", "Estado", "Observación"};

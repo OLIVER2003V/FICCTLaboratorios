@@ -51,11 +51,16 @@ public class UsuarioController {
         }
         Usuario u = leerDatos(c);
 
+        Usuario existentePorCorreo = usuarioDAO.buscarPorCorreo(u.getCorreo());
+        if (existentePorCorreo != null) {
+            u.setId(existentePorCorreo.getId());
+            usuarioDAO.actualizarConCodigo(u);
+            return tablaDeUno("Usuario actualizado",
+                    "El usuario con correo " + u.getCorreo() + " fue actualizado al código " + u.getCodigo()
+                            + " y rol " + u.getRolNombre() + ".", usuarioDAO.buscarPorId(u.getId()));
+        }
         if (usuarioDAO.buscarPorCodigo(u.getCodigo()) != null) {
             throw new NegocioException("Ya existe un usuario con el código " + u.getCodigo() + ".");
-        }
-        if (usuarioDAO.existeCorreo(u.getCorreo(), 0)) {
-            throw new NegocioException("El correo " + u.getCorreo() + " ya está registrado.");
         }
         usuarioDAO.insertar(u);
         return tablaDeUno("Usuario registrado",
@@ -69,7 +74,13 @@ public class UsuarioController {
             throw new NegocioException("Sintaxis: " + SINTAXIS_MODUSU + " o "
                     + "MODUSU[\"codigo\",\"nombre\",\"apellido\",\"correo\",\"telefono\",\"rol\",\"aula\",\"gestion\"]");
         }
-        Usuario existente = buscarExistente(c.param(0));
+        Usuario existente = usuarioDAO.buscarPorCodigo(c.param(0));
+        if (existente == null) {
+            existente = usuarioDAO.buscarPorCorreo(c.param(3));
+        }
+        if (existente == null) {
+            throw new NegocioException("No se encontró ningún usuario con el código o correo '" + c.param(0) + "'.");
+        }
         Usuario u = leerDatos(c);
         u.setId(existente.getId());
         if (c.cantidad() < 8) {
@@ -83,7 +94,7 @@ public class UsuarioController {
         if (existente.getId() == solicitante.getId() && !"ENC".equals(u.getRolCodigo())) {
             throw new NegocioException("No puede quitarse a sí mismo el rol de Encargado.");
         }
-        usuarioDAO.actualizar(u);
+        usuarioDAO.actualizarConCodigo(u);
         return tablaDeUno("Usuario modificado", "Los datos del usuario fueron actualizados.",
                 usuarioDAO.buscarPorCodigo(u.getCodigo()));
     }

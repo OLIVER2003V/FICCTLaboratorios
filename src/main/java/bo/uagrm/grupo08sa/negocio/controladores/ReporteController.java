@@ -107,7 +107,7 @@ public class ReporteController {
         LocalDate[] r = rango(c);
         List<Fila> reservas = reporteDAO.reservasEnRango(r[0], r[1]);
         Map<String, Integer> porEstado = contar(reservas, "estado", "PENDIENTE", "APROBADA", "RECHAZADA", "CANCELADA");
-        Map<String, Integer> porTipo = contar(reservas, "tipo", "EXAMEN", "RECUPERACION", "PRACTICA", "EVENTO");
+        Map<String, Integer> porTipo = contar(reservas, "tipo", "EXAMEN", "RECUPERACION", "PRACTICA", "EVENTO", "DEFENSA DE PROYECTO");
         Map<String, double[]> porLab = new TreeMap<>();               // [solicitudes, aprobadas, horas aprobadas]
         for (Fila res : reservas) {
             double[] v = porLab.computeIfAbsent(res.texto("lab"), k -> new double[3]);

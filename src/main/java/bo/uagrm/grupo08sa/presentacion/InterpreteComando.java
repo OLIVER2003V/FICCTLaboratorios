@@ -43,7 +43,11 @@ public final class InterpreteComando {
     private static String normalizar(String asunto) {
         String texto = asunto == null ? "" : asunto.replace("﻿", "").trim();
         texto = PREFIJO_RESPUESTA.matcher(texto).replaceFirst("");
-        return texto.replaceAll("[“”„‟″«»]", "\"").trim();
+        texto = texto.replaceAll("[“”„‟″«»]", "\"").trim();
+        while (texto.endsWith(";") || texto.endsWith(".")) {
+            texto = texto.substring(0, texto.length() - 1).trim();
+        }
+        return texto;
     }
 
     private static List<String> separarParametros(String interior, String asunto) throws FormatoInvalidoException {

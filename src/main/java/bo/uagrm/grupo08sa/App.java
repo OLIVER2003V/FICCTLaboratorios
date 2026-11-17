@@ -33,10 +33,15 @@ public class App {
             case "--actualizar-inventario" -> actualizarInventario();
             case "--restaurar-objetos" -> restaurarObjetos();
             case "--cargar-incidencias" -> cargarIncidencias();
+            case "--cargar-directores" -> cargarDirectores();
+            case "--cargar-bloqueos" -> cargarBloqueos();
+            case "--actualizar-horario-inf120" -> actualizarHorarioInf120();
+            case "--cargar-reservas-balcazar" -> cargarReservasBalcazar();
+            case "--actualizar-reservas-defensa" -> actualizarReservasDefensa();
             case "--verificar-tablas" -> verificarTablas();
             case "--reiniciar-bd" -> reiniciarBaseDeDatos();
             default -> System.out.println("Modo desconocido: " + modo
-                    + ". Use --una-vez, --local, --probar, --crear-bd, --cargar-turnos, --cargar-permutas, --actualizar-inventario, --restaurar-objetos, --cargar-incidencias, --verificar-tablas o --reiniciar-bd.");
+                    + ". Use --una-vez, --local, --probar, --crear-bd, --cargar-turnos, --cargar-permutas, --actualizar-inventario, --restaurar-objetos, --cargar-incidencias, --cargar-directores, --cargar-bloqueos, --verificar-tablas o --reiniciar-bd.");
         }
     }
 
@@ -113,6 +118,36 @@ public class App {
         System.out.println("Cargando incidencias de prueba (18 fallas en diversos laboratorios)...");
         InicializadorBD.ejecutarScript(Path.of("sql", "07_datos_incidencias.sql"));
         System.out.println("Incidencias cargadas exitosamente.");
+    }
+
+    private static void cargarDirectores() throws Exception {
+        System.out.println("Registrando y actualizando autoridades/directores (Decano: D01, Vicedecano: D02)...");
+        InicializadorBD.ejecutarScript(Path.of("sql", "08_directores_autoridades.sql"));
+        System.out.println("Autoridades registradas con éxito con rol DIR (D01: Peinado, D02: Caballero).");
+    }
+
+    private static void cargarBloqueos() throws Exception {
+        System.out.println("Cargando calendario académico de fechas bloqueadas y feriados (semestre 2-2026)...");
+        InicializadorBD.ejecutarScript(Path.of("sql", "09_datos_fechas_bloqueadas.sql"));
+        System.out.println("Fechas bloqueadas registradas con éxito (feriados nacionales, departamentales, PSA y mantenimientos).");
+    }
+
+    private static void actualizarHorarioInf120() throws Exception {
+        System.out.println("Actualizando horario de INF120-SA en LAB-44 a 08:30 - 10:00 (Lunes, Miércoles, Viernes)...");
+        InicializadorBD.ejecutarScript(Path.of("sql", "11_modificar_horario_inf120.sql"));
+        System.out.println("Horario de INF120-SA actualizado exitosamente a 08:30 - 10:00.");
+    }
+
+    private static void cargarReservasBalcazar() throws Exception {
+        System.out.println("Registrando reservas para docente Evans Balcazar en LAB-44 (17, 18 y 20 de noviembre)...");
+        InicializadorBD.ejecutarScript(Path.of("sql", "12_insertar_reservas_balcazar.sql"));
+        System.out.println("Reservas registradas y aprobadas exitosamente en LAB-44.");
+    }
+
+    private static void actualizarReservasDefensa() throws Exception {
+        System.out.println("Actualizando tipo de reservas a DEFENSA DE PROYECTO en LAB-44...");
+        InicializadorBD.ejecutarScript(Path.of("sql", "13_actualizar_reservas_defensa_proyecto.sql"));
+        System.out.println("Reservas actualizadas con éxito a tipo DEFENSA DE PROYECTO.");
     }
 
     private static void verificarTablas() {

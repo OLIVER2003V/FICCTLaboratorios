@@ -92,6 +92,22 @@ public class UsuarioDAO {
         }
     }
 
+    public boolean actualizarConCodigo(Usuario u) throws SQLException {
+        String sql = "UPDATE usuario SET codigo = ?, nombre = ?, apellido = ?, correo = ?, telefono = ?, aula = ?, gestion = ?, rol_id = ?, estado = 'ACTIVO' WHERE id = ?";
+        try (Connection cn = Conexion.getConexion(); PreparedStatement ps = cn.prepareStatement(sql)) {
+            ps.setString(1, u.getCodigo());
+            ps.setString(2, u.getNombre());
+            ps.setString(3, u.getApellido());
+            ps.setString(4, u.getCorreo());
+            ps.setString(5, u.getTelefono());
+            ps.setString(6, u.getAula());
+            ps.setString(7, u.getGestion());
+            ps.setInt(8, u.getRolId());
+            ps.setInt(9, u.getId());
+            return ps.executeUpdate() == 1;
+        }
+    }
+
     public boolean cambiarEstado(int id, String estado) throws SQLException {
         String sql = "UPDATE usuario SET estado = ? WHERE id = ?";
         try (Connection cn = Conexion.getConexion(); PreparedStatement ps = cn.prepareStatement(sql)) {
@@ -114,6 +130,12 @@ public class UsuarioDAO {
             parametros.add(estado);
         }
         sql.append("ORDER BY "
+                + "CASE r.codigo "
+                + "  WHEN 'ENC' THEN 1 "
+                + "  WHEN 'DIR' THEN 2 "
+                + "  WHEN 'DOC' THEN 3 "
+                + "  WHEN 'AUX' THEN 4 "
+                + "  ELSE 5 END, "
                 + "CASE WHEN TRIM(u.codigo) ~ '^[0-9]+$' THEN 0 ELSE 1 END, "
                 + "CASE WHEN TRIM(u.codigo) ~ '^[0-9]+$' THEN TRIM(u.codigo)::numeric ELSE NULL END, "
                 + "LENGTH(TRIM(u.codigo)) ASC, "
