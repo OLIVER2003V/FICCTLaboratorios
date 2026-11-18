@@ -39,6 +39,8 @@ public class App {
             case "--cargar-reservas-balcazar" -> cargarReservasBalcazar();
             case "--actualizar-reservas-defensa" -> actualizarReservasDefensa();
             case "--verificar-tablas" -> verificarTablas();
+            case "--diagnostico-reservas" -> diagnosticarReservas();
+            case "--reordenar-ids-reservas" -> reordenarIdsReservas();
             case "--reiniciar-bd" -> reiniciarBaseDeDatos();
             default -> System.out.println("Modo desconocido: " + modo
                     + ". Use --una-vez, --local, --probar, --crear-bd, --cargar-turnos, --cargar-permutas, --actualizar-inventario, --restaurar-objetos, --cargar-incidencias, --cargar-directores, --cargar-bloqueos, --verificar-tablas o --reiniciar-bd.");
@@ -148,6 +150,58 @@ public class App {
         System.out.println("Actualizando tipo de reservas a DEFENSA DE PROYECTO en LAB-44...");
         InicializadorBD.ejecutarScript(Path.of("sql", "13_actualizar_reservas_defensa_proyecto.sql"));
         System.out.println("Reservas actualizadas con éxito a tipo DEFENSA DE PROYECTO.");
+    }
+
+    private static void diagnosticarReservas() {
+        try (java.sql.Connection cn = bo.uagrm.grupo08sa.datos.Conexion.getConexion();
+             java.sql.Statement st = cn.createStatement()) {
+            System.out.println("=== USUARIOS CON NOMBRE/CORREO JAIRO/SANABRIA/29405 ===");
+            var rsU = st.executeQuery(
+                    "SELECT u.id, u.codigo, u.nombre, u.apellido, u.correo, r.codigo as rol "
+                    + "FROM usuario u JOIN rol r ON u.rol_id = r.id "
+                    + "WHERE u.nombre ILIKE '%jairo%' OR u.correo ILIKE '%jairo%' OR u.correo ILIKE '%sanabria%' OR u.codigo = '29405'");
+            while (rsU.next()) {
+                System.out.printf("ID: %d | Cod: %s | Nombre: %s %s | Correo: %s | Rol: %s%n",
+                        rsU.getInt("id"), rsU.getString("codigo"), rsU.getString("nombre"),
+                        rsU.getString("apellido"), rsU.getString("correo"), rsU.getString("rol"));
+            }
+
+            System.out.println("\n=== ULTIMOS COMANDOS PROCESADOS (TABLA bitacora) ===");
+            var rsM = st.executeQuery(
+                    "SELECT id, remitente, asunto, comando, resultado, fecha FROM bitacora ORDER BY id DESC LIMIT 10");
+            while (rsM.next()) {
+                System.out.printf("ID: %d | De: %s | Asunto: %s | Cmd: %s | Res: %s | Fecha: %s%n",
+                        rsM.getInt("id"), rsM.getString("remitente"), rsM.getString("asunto"),
+                        rsM.getString("comando"), rsM.getString("resultado"), rsM.getTimestamp("fecha"));
+            }
+
+            System.out.println("\n=== LISTADO DE RESERVAS ACTUALES ===");
+            var rsR = st.executeQuery(
+                    "SELECT r.id, l.codigo as lab, r.fecha, r.hora_inicio, r.hora_fin, r.tipo, "
+                    + "r.estado, u.nombre || ' ' || u.apellido as solicitante "
+                    + "FROM reserva r JOIN laboratorio l ON r.laboratorio_id = l.id "
+                    + "JOIN usuario u ON r.solicitante_id = u.id "
+                    + "ORDER BY r.fecha ASC, r.hora_inicio ASC, r.id ASC");
+            while (rsR.next()) {
+                System.out.printf("ID: %2d | Lab: %-10s | Fecha: %s %s-%s | %-20s | %-10s | Solicitante: %s%n",
+                        rsR.getInt("id"), rsR.getString("lab"), rsR.getDate("fecha"),
+                        rsR.getTime("hora_inicio"), rsR.getTime("hora_fin"),
+                        rsR.getString("tipo"), rsR.getString("estado"), rsR.getString("solicitante"));
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void reordenarIdsReservas() {
+        try {
+            System.out.println("Reordenando IDs de reservas cronológicamente (por fecha, hora_inicio)...");
+            InicializadorBD.ejecutarScript(Path.of("sql", "14_reordenar_ids_reservas.sql"));
+            System.out.println("IDs de reservas reordenados exitosamente.");
+            diagnosticarReservas();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     private static void verificarTablas() {
