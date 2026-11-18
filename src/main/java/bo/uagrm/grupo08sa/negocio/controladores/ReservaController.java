@@ -162,11 +162,11 @@ public class ReservaController {
                 COLUMNAS, List.<String[]>of(fila(reservaDAO.buscarPorId(r.entero("id")))));
     }
 
-    // LISRES["*"]  LISRES["PENDIENTE"]   (el Encargado ve todas; los demás, solo las suyas)
+    // LISRES["*"]  LISRES["PENDIENTE"]   (Encargado, Auxiliares y Dirección ven todas; los Docentes, las suyas)
     public Resultado listar(Comando c, Usuario u) throws NegocioException, SQLException {
         c.exigirEntre(0, 1, "LISRES[\"*\"] o LISRES[\"estado\"]");
         String estado = c.cantidad() == 1 ? Validar.opcion(c.param(0), "estado", ESTADOS) : null;
-        boolean todas = "ENC".equals(u.getRolCodigo());
+        boolean todas = "ENC".equals(u.getRolCodigo()) || "AUX".equals(u.getRolCodigo()) || "DIR".equals(u.getRolCodigo());
         List<String[]> filas = new ArrayList<>();
         for (Fila r : reservaDAO.listar(todas ? null : u.getId(), estado)) {
             filas.add(fila(r));
