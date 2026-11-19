@@ -1,0 +1,273 @@
+================================================================================
+          SISTEMA DE GESTION DE LABORATORIOS FICCT - GRUPO 08 SA
+   CASO DE USO 4 (CU4): GESTION DE RESERVAS EXTRAORDINARIAS Y NOTIFICACIONES
+================================================================================
+
+--------------------------------------------------------------------------------
+1. DISENO LOGICO (MODELO CONCEPTUAL / RELACIONAL)
+--------------------------------------------------------------------------------
+El modulo de Reservas Extraordinarias y Notificaciones (CU4) administra las
+solicitudes especiales de laboratorios realizadas por docentes o directores para
+examenes, recuperaciones, practicas, eventos academicos y defensas de proyecto,
+asi como el flujo de aprobacion/rechazo por el Encargado y la notificacion automatica.
+
+A. ENTIDADES Y DEFINICION LOGICA:
+  * RESERVA (id, laboratorio_id, solicitante_id, fecha, hora_inicio, hora_fin, tipo, motivo, estado, resuelto_por, observacion, creado_en)
+    Registra la peticion de uso temporal de un laboratorio para una fecha y franja horaria determinada.
+
+  * NOTIFICACION (id, usuario_id, asunto, cuerpo, reserva_id, enviado_en)
+    Historial de mensajes y avisos emitidos hacia los solicitantes informando resoluciones o confirmaciones.
+
+B. RELACIONES Y CARDINALIDADES:
+  * LABORATORIO (1) ──── (N) RESERVA
+    Un laboratorio alberga multiples reservas a lo largo del semestre ('laboratorio_id').
+  * USUARIO [SOLICITANTE] (1) ──── (N) RESERVA
+    Un docente o director puede realizar multiples solicitudes de reserva ('solicitante_id').
+  * USUARIO [ENCARGADO] (1) ──── (N) RESERVA (Opcional / Nulo mientras este PENDIENTE)
+    El encargado evalua y resuelve la solicitud aprobando o rechazando ('resuelto_por').
+  * USUARIO (1) ──── (N) NOTIFICACION
+    Cada notificacion tiene un usuario destinatario ('usuario_id').
+  * RESERVA (1) ──── (N) NOTIFICACION (Opcional / ON UPDATE CASCADE ON DELETE SET NULL)
+    Una reserva genera una o varias notificaciones de estado ('reserva_id').
+
+C. REGLAS DE NEGOCIO E INTEGRIDAD:
+  1. Restriccion de Fechas Futuras: Las reservas solo pueden solicitarse y aprobarse para fechas
+     y horas estrictamente futuras respecto al momento de la operacion.
+  2. Tipos de Reserva Permitidos: 'EXAMEN', 'RECUPERACION', 'PRACTICA', 'EVENTO',
+     'DEFENSA DE PROYECTO', 'DEFENSA'.
+  3. Ciclo de Vida: Inicia como 'PENDIENTE'. El Encargado puede cambiar a 'APROBADA' o 'RECHAZADA'.
+     El solicitante puede pasarla a 'CANCELADA' antes de que ocurra.
+  4. Control de Choques (Disponibilidad Estricta): No se permite aprobar una reserva si se superpone
+     con una clase de carga horaria base (CU3), con otra reserva ya 'APROBADA' o con una fecha bloqueada (CU2).
+  5. Coherencia de Horas: La hora de fin debe ser estrictamente posterior a la hora de inicio ('hora_fin > hora_inicio').
+  6. Auditoria Obligatoria: Al aprobar o rechazar se registra el Encargado ('resuelto_por') y una observacion explicativa.
+
+--------------------------------------------------------------------------------
+2. DISENO FISICO (DICCIONARIO DE DATOS EN POSTGRESQL)
+--------------------------------------------------------------------------------
+
+TABLA: reserva
++-------------+--------------+----------+---------------------------------------------------+
+| Columna     | Tipo         | Nulo     | Descripcion / Observacion                         |
++-------------+--------------+----------+---------------------------------------------------+
+| id          | INTEGER      | NOT NULL | Clave primaria ( SERIAL )                         |
+| laboratorio_id| INTEGER    | NOT NULL | Clave foranea referencia a laboratorio(id)        |
+| solicitante_id| INTEGER    | NOT NULL | Clave foranea referencia a usuario(id)            |
+| fecha       | DATE         | NOT NULL | Fecha de la reserva (debe ser futura)             |
+| hora_inicio | TIME         | NOT NULL | Hora de inicio solicitada                         |
+| hora_fin    | TIME         | NOT NULL | Hora de fin solicitada (CHECK hora_fin > inicio)  |
+| tipo        | VARCHAR(30)  | NOT NULL | EXAMEN, PRACTICA, EVENTO, DEFENSA DE PROYECTO...  |
+| motivo      | VARCHAR(200) | Nulo     | Descripcion o justificacion de la solicitud       |
+| estado      | VARCHAR(10)  | NOT NULL | PENDIENTE, APROBADA, RECHAZADA, CANCELADA         |
+| resuelto_por| INTEGER      | Nulo     | Referencia a usuario(id) del Encargado resolutor  |
+| observacion | VARCHAR(200) | Nulo     | Nota de resolucion emitida por el Encargado       |
+| creado_en   | TIMESTAMP    | NOT NULL | Fecha y hora de creacion (DEFAULT CURRENT_TIME..) |
++-------------+--------------+----------+---------------------------------------------------+
+
+TABLA: notificacion
++-------------+--------------+----------+---------------------------------------------------+
+| Columna     | Tipo         | Nulo     | Descripcion / Observacion                         |
++-------------+--------------+----------+---------------------------------------------------+
+| id          | INTEGER      | NOT NULL | Clave primaria ( SERIAL )                         |
+| usuario_id  | INTEGER      | NOT NULL | Clave foranea referencia a usuario(id)            |
+| asunto      | VARCHAR(150) | NOT NULL | Asunto del aviso o correo de notificacion         |
+| cuerpo      | TEXT         | Nulo     | Contenido o detalle completo del mensaje          |
+| reserva_id  | INTEGER      | Nulo     | Clave foranea referencia a reserva(id) (ON UPDATE)|
+| enviado_en  | TIMESTAMP    | NOT NULL | Fecha y hora de emision (DEFAULT CURRENT_TIME..)  |
++-------------+--------------+----------+---------------------------------------------------+
+
+--------------------------------------------------------------------------------
+3. TABLAS RELLENAS CON DATOS REALES DE LA BASE DE DATOS
+--------------------------------------------------------------------------------
+
+A. DATOS DE LA TABLA: reserva (35 reservas ordenadas cronologicamente)
++----+------------+------------+-----------------+---------------------+---------------------------------+---------------------------------+------------+---------------------------------+
+| id | lab        | fecha      | horario         | tipo                | motivo                          | solicitante                     | estado     | observacion                     |
++----+------------+------------+-----------------+---------------------+---------------------------------+---------------------------------+------------+---------------------------------+
+| 1  | LAB-45     | 2026-11-03 | 12:30 - 13:30   | EXAMEN              | Examen SO1                      | EDWIN CALLE TERRAZAS            | APROBADA   | Obs: Examen | Aux. Apoyo: 1     |
+| 2  | LAB-44     | 2026-11-03 | 12:30 - 13:30   | EXAMEN              | Examen SO1                      | EDWIN CALLE TERRAZAS            | APROBADA   | Obs: Examen | Aux. Apoyo: 1     |
+| 3  | LAB-46     | 2026-11-03 | 12:30 - 13:30   | EXAMEN              | Examen SO1                      | EDWIN CALLE TERRAZAS            | APROBADA   | Obs: Examen | Aux. Apoyo: 1     |
+| 4  | LAB-41     | 2026-11-03 | 14:00 - 16:00   | EXAMEN              | Evaluación inglés               | GUSTAVO ADOLFO OROPEZA CLAURE   | APROBADA   | Obs: Examen                     |
+| 5  | AUDITORIO  | 2026-11-04 | 10:00 - 13:00   | EVENTO              | Presentación de informe oral    | JOSE JUNIOR VILLAGOMEZ MELGAR   | APROBADA   | Obs: Informe                    |
+| 6  | AUDITORIO  | 2026-11-04 | 15:00 - 19:00   | EXAMEN              | 1er examen parcial Introducción a la informática Z3 y 1 | RICARDO ZUNA VILLAGOMEZ         | APROBADA   | Obs: 1er examen parcial         |
+| 7  | AUDITORIO  | 2026-11-06 | 10:00 - 12:00   | EXAMEN              | 1er examen parcial Introducción a la informática - SB | RICARDO ZUNA VILLAGOMEZ         | APROBADA   | Obs: 1er examen parcial         |
+| 8  | LAB-41     | 2026-11-06 | 13:00 - 15:00   | PRACTICA            | Auxiliatura para examen Introducción a la informática | Jairo Sanabria Ortega           | APROBADA   | Obs: Auxiliatura para examen    |
+| 9  | LAB-41     | 2026-11-07 | 07:00 - 08:30   | EXAMEN              | Examen Intro a la informática   | JOSUE OBED VEIZAGA GONZALES     | APROBADA   | Obs: examen 3 laboratorios | Aux. Apoyo: 3 |
+| 10 | LAB-45     | 2026-11-07 | 07:00 - 08:30   | EXAMEN              | Examen Intro a la informática   | JOSUE OBED VEIZAGA GONZALES     | APROBADA   | Obs: examen 3 laboratorios | Aux. Apoyo: 3 |
+| 11 | LAB-46     | 2026-11-07 | 07:00 - 08:30   | EXAMEN              | Examen Intro a la informática   | JOSUE OBED VEIZAGA GONZALES     | APROBADA   | Obs: examen 3 laboratorios | Aux. Apoyo: 3 |
+| 12 | LAB-41     | 2026-11-07 | 08:30 - 10:00   | EXAMEN              | Examen Base de Datos 1          | JOSUE OBED VEIZAGA GONZALES     | APROBADA   | Obs: examen 3 laboratorios | Aux. Apoyo: 5 |
+| 13 | LAB-45     | 2026-11-07 | 08:30 - 10:00   | EXAMEN              | Examen Base de Datos 1          | JOSUE OBED VEIZAGA GONZALES     | APROBADA   | Obs: examen 3 laboratorios | Aux. Apoyo: 5 |
+| 14 | LAB-46     | 2026-11-07 | 08:30 - 10:00   | EXAMEN              | Examen Base de Datos 1          | JOSUE OBED VEIZAGA GONZALES     | APROBADA   | Obs: examen 3 laboratorios | Aux. Apoyo: 5 |
+| 15 | LAB-43     | 2026-11-07 | 08:30 - 10:00   | EXAMEN              | Examen Base de Datos 1          | JOSUE OBED VEIZAGA GONZALES     | APROBADA   | Obs: Examen de base 1 | Aux. Apoyo: 5 |
+| 16 | LAB-43     | 2026-11-07 | 10:00 - 12:00   | EXAMEN              | Evaluación Probabilidades y Estadística I | ANGELICA GARZON CUELLAR         | APROBADA   | Obs: Evaluación                 |
+| 17 | LAB-41     | 2026-11-07 | 10:00 - 13:00   | EXAMEN              | Examen de Base de datos 1 R1    | ARIEL VEGA                      | APROBADA   | Obs: Instalar DB Browser for SQLite |
+| 18 | AUDITORIO  | 2026-11-09 | 08:30 - 11:30   | EXAMEN              | Evaluación INF119 Z1 MAT103 SE  | KATIME ESTHER GUTIERREZ BRUNO   | APROBADA   | Obs: Aula 11                    |
+| 19 | AUDITORIO  | 2026-11-09 | 16:45 - 18:15   | EXAMEN              | Evaluación INF119 Z5            | KATIME ESTHER GUTIERREZ BRUNO   | APROBADA   | Obs: Evaluación                 |
+| 20 | AUDITORIO  | 2026-11-09 | 19:45 - 21:00   | EXAMEN              | Examen Programación Ensamblador | VALENTIN VICTOR FLORES GUZMAN   | APROBADA   | Obs: Examen                     |
+| 21 | LAB-43     | 2026-11-12 | 19:00 - 20:30   | EXAMEN              | metodología de la investigación | SHIRLEY EULAL PEREZ DELGADILLO  | RECHAZADA  | Solicitud caducada no atendida a tiempo |
+| 22 | LAB-44     | 2026-11-17 | 07:00 - 22:30   | DEFENSA DE PROYECTO | INF513 SC - TECNOLOGIA WEB (Defensa de proyecto final) | EVANS BALCAZAR VEIZAGA          | APROBADA   | Aprobado por Encargado de Laboratorios |
+| 23 | LAB-44     | 2026-11-18 | 07:00 - 22:30   | DEFENSA DE PROYECTO | INF120 SA - TECNOLOGIA WEB (Defensa de proyecto final) | EVANS BALCAZAR VEIZAGA          | APROBADA   | Aprobado por Encargado de Laboratorios |
+| 24 | LAB-44     | 2026-11-19 | 07:00 - 13:30   | EVENTO              | Proyecto Herramientas RDS519 - SA | EVANS BALCAZAR VEIZAGA          | APROBADA   | Obs: Exposición                 |
+| 25 | LAB-46     | 2026-11-19 | 16:00 - 18:15   | EXAMEN              | Exámenes y revisión de proyecto (Estructura de datos 2 -sb) | CESPEDES ROBERTO CA VACA PINTO  | APROBADA   | Obs: Evaluación                 |
+| 26 | LAB-44     | 2026-11-20 | 07:00 - 22:30   | DEFENSA DE PROYECTO | INF120 SA - TECNOLOGIA WEB (Defensa de proyecto final) | EVANS BALCAZAR VEIZAGA          | APROBADA   | Aprobado por Encargado de Laboratorios |
+| 27 | LAB-44     | 2026-11-21 | 07:00 - 12:00   | EXAMEN              | Examen 3er Parcial INF120-SA : PRO | EVANS BALCAZAR VEIZAGA          | APROBADA   | Obs: Evaluación                 |
+| 28 | LAB-46     | 2026-11-26 | 16:00 - 18:15   | EXAMEN              | Exámenes y revisión de proyecto (Estructura de datos 2 -sb) | CESPEDES ROBERTO CA VACA PINTO  | APROBADA   | Obs: Evaluación                 |
+| 29 | AUDITORIO  | 2026-11-27 | 07:00 - 11:30   | EXAMEN              | Evaluación Examen Final         | SARAH MIRNA MARTINEZ CARDONA    | APROBADA   | Obs: Evaluación (Aula 32) | Aux. Apoyo: 2 |
+| 30 | LAB-44     | 2026-11-27 | 07:00 - 20:30   | EVENTO              | Proyecto WEB INF513 - SA        | EVANS BALCAZAR VEIZAGA          | APROBADA   | Obs: Exposición                 |
+| 31 | LAB-44     | 2026-11-28 | 07:00 - 12:00   | EXAMEN              | Examen 3er Parcial INF120-SA/SF/MV : PROGRAMACIÓN I | EVANS BALCAZAR VEIZAGA          | APROBADA   | Obs: Evaluación                 |
+| 32 | AUDITORIO  | 2026-12-01 | 07:00 - 09:15   | EXAMEN              | Sistemas de información II      | ANGELICA GARZON CUELLAR         | APROBADA   |                                 |
+| 33 | AUDITORIO  | 2026-12-02 | 07:00 - 08:30   | EXAMEN              | Ingeniería de requisitos        | ANGELICA GARZON CUELLAR         | PENDIENTE  | Obs: examen teórico, Aula para intercambio (23) |
+| 34 | LAB-46     | 2026-12-03 | 16:00 - 18:15   | EXAMEN              | Exámenes y revisión de proyecto (Estructura de datos 2 -sb) | CESPEDES ROBERTO CA VACA PINTO  | PENDIENTE  | Obs: Evaluación                 |
+| 35 | LAB-43     | 2026-12-10 | 14:00 - 16:00   | EXAMEN              | Examen final de Metodologia     | Jairo Sanabria Ortega           | PENDIENTE  |                                 |
++----+------------+------------+-----------------+---------------------+---------------------------------+---------------------------------+------------+---------------------------------+
+Total de reservas registradas en el sistema: 35
+
+B. DATOS DE LA TABLA: notificacion (Notificaciones vinculadas a reservas)
++----+---------------------------------+------------------------------------------------------------+------------+---------------------+
+| id | usuario                         | asunto                                                     | reserva_id | enviado_en          |
++----+---------------------------------+------------------------------------------------------------+------------+---------------------+
+| 1  | Alicia Rivas Romana             | Falta registrada                                           | -          | 2026-11-17 09:26:07.739116 |
+| 2  | Luis Enrique Higuera Huanca     | Falta de auxiliar en turno #152                            | -          | 2026-11-17 09:26:12.785193 |
+| 3  | Jairo Sanabria Ortega           | Falta de auxiliar en turno #152                            | -          | 2026-11-17 09:26:16.48912 |
+| 4  | Oliver Ventura Valverde         | Falta de auxiliar en turno #152                            | -          | 2026-11-17 09:26:20.109358 |
+| 5  | Diego Rodrigo Ybarra Velasquez  | Falta registrada                                           | -          | 2026-11-17 09:26:25.832753 |
+| 6  | Luis Enrique Higuera Huanca     | Falta de auxiliar en turno #157                            | -          | 2026-11-17 09:26:29.937489 |
+| 7  | Jairo Sanabria Ortega           | Falta de auxiliar en turno #157                            | -          | 2026-11-17 09:26:34.186789 |
+| 8  | Oliver Ventura Valverde         | Falta de auxiliar en turno #157                            | -          | 2026-11-17 09:26:37.792979 |
+| 9  | Jose Carlo Fernandez Rodas      | Falta registrada                                           | -          | 2026-11-17 09:26:43.041057 |
+| 10 | Luis Enrique Higuera Huanca     | Falta de auxiliar en turno #167                            | -          | 2026-11-17 09:26:47.139007 |
+| 11 | Jairo Sanabria Ortega           | Falta de auxiliar en turno #167                            | -          | 2026-11-17 09:26:50.77823 |
+| 12 | Oliver Ventura Valverde         | Falta de auxiliar en turno #167                            | -          | 2026-11-17 09:26:54.303042 |
+| 13 | Freddy Andre Padilla Mina       | Falta registrada                                           | -          | 2026-11-17 09:26:59.46648 |
+| 14 | Luis Enrique Higuera Huanca     | Falta de auxiliar en turno #162                            | -          | 2026-11-17 09:27:04.134614 |
+| 15 | Jairo Sanabria Ortega           | Falta de auxiliar en turno #162                            | -          | 2026-11-17 09:27:08.468628 |
+| 16 | Oliver Ventura Valverde         | Falta de auxiliar en turno #162                            | -          | 2026-11-17 09:27:12.754795 |
+| 17 | Nicolas Junior Verduguez Teran  | Falta registrada                                           | -          | 2026-11-17 12:10:05.24248 |
+| 18 | Luis Enrique Higuera Huanca     | Falta de auxiliar en turno #187                            | -          | 2026-11-17 12:10:11.450606 |
+| 19 | Jairo Sanabria Ortega           | Falta de auxiliar en turno #187                            | -          | 2026-11-17 12:10:15.923688 |
+| 20 | Oliver Ventura Valverde         | Falta de auxiliar en turno #187                            | -          | 2026-11-17 12:10:20.240942 |
+| 21 | Gabriel Andres Lopez Franco     | Falta registrada                                           | -          | 2026-11-17 12:10:25.546057 |
+| 22 | Luis Enrique Higuera Huanca     | Falta de auxiliar en turno #177                            | -          | 2026-11-17 12:10:30.635066 |
+| 23 | Jairo Sanabria Ortega           | Falta de auxiliar en turno #177                            | -          | 2026-11-17 12:10:35.369695 |
+| 24 | Oliver Ventura Valverde         | Falta de auxiliar en turno #177                            | -          | 2026-11-17 12:10:40.127489 |
+| 25 | Cesar Alejandro Caballero Caballero | Falta registrada                                           | -          | 2026-11-17 12:10:46.425738 |
+| 26 | Luis Enrique Higuera Huanca     | Falta de auxiliar en turno #182                            | -          | 2026-11-17 12:10:51.64364 |
+| 27 | Jairo Sanabria Ortega           | Falta de auxiliar en turno #182                            | -          | 2026-11-17 12:10:56.813644 |
+| 28 | Oliver Ventura Valverde         | Falta de auxiliar en turno #182                            | -          | 2026-11-17 12:11:01.19856 |
+| 29 | Jairo Sanabria Ortega           | Mensaje interno de Jairo Sanabria Ortega                   | -          | 2026-11-17 15:01:15.047257 |
+| 30 | Jairo Sanabria Ortega           | Mensaje interno de Jairo Sanabria Ortega                   | -          | 2026-11-17 15:14:01.436563 |
+| 31 | ANGELICA GARZON CUELLAR         | Reserva #30 APROBADA                                       | 32         | 2026-11-18 00:15:47.216888 |
+| 32 | SHIRLEY EULAL PEREZ DELGADILLO  | Reserva #33 RECHAZADA                                      | 21         | 2026-11-18 00:16:13.270957 |
+| 33 | Luis Enrique Higuera Huanca     | Nueva solicitud de reserva #40                             | 35         | 2026-11-18 00:19:23.83262 |
+| 34 | Jairo Sanabria Ortega           | Nueva solicitud de reserva #40                             | 35         | 2026-11-18 00:19:28.908562 |
+| 35 | Oliver Ventura Valverde         | Nueva solicitud de reserva #40                             | 35         | 2026-11-18 00:19:33.110052 |
++----+---------------------------------+------------------------------------------------------------+------------+---------------------+
+Total de notificaciones registradas: 35
+
+--------------------------------------------------------------------------------
+4. SCRIPT SQL COMPLETO (DDL Y DML)
+--------------------------------------------------------------------------------
+-- SCRIPT DDL: CREACION DE TABLAS (CU4)
+CREATE TABLE reserva (
+  id             SERIAL PRIMARY KEY,
+  laboratorio_id INT  NOT NULL REFERENCES laboratorio(id),
+  solicitante_id INT  NOT NULL REFERENCES usuario(id),
+  fecha          DATE NOT NULL,
+  hora_inicio    TIME NOT NULL,
+  hora_fin       TIME NOT NULL,
+  tipo           VARCHAR(30) NOT NULL
+                 CHECK (tipo IN ('EXAMEN','RECUPERACION','PRACTICA','EVENTO','DEFENSA DE PROYECTO','DEFENSA')),
+  motivo         VARCHAR(200),
+  estado         VARCHAR(10) NOT NULL DEFAULT 'PENDIENTE'
+                 CHECK (estado IN ('PENDIENTE','APROBADA','RECHAZADA','CANCELADA')),
+  resuelto_por   INT REFERENCES usuario(id),
+  observacion    VARCHAR(200),
+  creado_en      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CHECK (hora_fin > hora_inicio)
+);
+
+CREATE TABLE notificacion (
+  id         SERIAL PRIMARY KEY,
+  usuario_id INT NOT NULL REFERENCES usuario(id),
+  asunto     VARCHAR(150) NOT NULL,
+  cuerpo     TEXT,
+  reserva_id INT REFERENCES reserva(id) ON UPDATE CASCADE ON DELETE SET NULL,
+  enviado_en TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- SCRIPT DML: INSERTS DE RESERVAS (DATOS REALES)
+INSERT INTO reserva (laboratorio_id, solicitante_id, fecha, hora_inicio, hora_fin, tipo, motivo, estado, resuelto_por, observacion) VALUES
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-45'), (SELECT id FROM usuario WHERE codigo = '6521'), '2026-11-03', '12:30:00', '13:30:00', 'EXAMEN', 'Examen SO1', 'APROBADA', (SELECT id FROM usuario WHERE codigo = '222009845'), 'Obs: Examen | Aux. Apoyo: 1'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-44'), (SELECT id FROM usuario WHERE codigo = '6521'), '2026-11-03', '12:30:00', '13:30:00', 'EXAMEN', 'Examen SO1', 'APROBADA', (SELECT id FROM usuario WHERE codigo = '222009845'), 'Obs: Examen | Aux. Apoyo: 1'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-46'), (SELECT id FROM usuario WHERE codigo = '6521'), '2026-11-03', '12:30:00', '13:30:00', 'EXAMEN', 'Examen SO1', 'APROBADA', (SELECT id FROM usuario WHERE codigo = '222009845'), 'Obs: Examen | Aux. Apoyo: 1'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), (SELECT id FROM usuario WHERE codigo = '9494'), '2026-11-03', '14:00:00', '16:00:00', 'EXAMEN', 'Evaluación inglés', 'APROBADA', (SELECT id FROM usuario WHERE codigo = '222009845'), 'Obs: Examen'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'AUDITORIO'), (SELECT id FROM usuario WHERE codigo = '7213'), '2026-11-04', '10:00:00', '13:00:00', 'EVENTO', 'Presentación de informe oral', 'APROBADA', (SELECT id FROM usuario WHERE codigo = '222009845'), 'Obs: Informe'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'AUDITORIO'), (SELECT id FROM usuario WHERE codigo = '625'), '2026-11-04', '15:00:00', '19:00:00', 'EXAMEN', '1er examen parcial Introducción a la informática Z3 y 1', 'APROBADA', (SELECT id FROM usuario WHERE codigo = '222009845'), 'Obs: 1er examen parcial'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'AUDITORIO'), (SELECT id FROM usuario WHERE codigo = '625'), '2026-11-06', '10:00:00', '12:00:00', 'EXAMEN', '1er examen parcial Introducción a la informática - SB', 'APROBADA', (SELECT id FROM usuario WHERE codigo = '222009845'), 'Obs: 1er examen parcial'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), (SELECT id FROM usuario WHERE codigo = '29405'), '2026-11-06', '13:00:00', '15:00:00', 'PRACTICA', 'Auxiliatura para examen Introducción a la informática', 'APROBADA', (SELECT id FROM usuario WHERE codigo = '222009845'), 'Obs: Auxiliatura para examen'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), (SELECT id FROM usuario WHERE codigo = '2204'), '2026-11-07', '07:00:00', '08:30:00', 'EXAMEN', 'Examen Intro a la informática', 'APROBADA', (SELECT id FROM usuario WHERE codigo = '222009845'), 'Obs: examen 3 laboratorios | Aux. Apoyo: 3'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-45'), (SELECT id FROM usuario WHERE codigo = '2204'), '2026-11-07', '07:00:00', '08:30:00', 'EXAMEN', 'Examen Intro a la informática', 'APROBADA', (SELECT id FROM usuario WHERE codigo = '222009845'), 'Obs: examen 3 laboratorios | Aux. Apoyo: 3'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-46'), (SELECT id FROM usuario WHERE codigo = '2204'), '2026-11-07', '07:00:00', '08:30:00', 'EXAMEN', 'Examen Intro a la informática', 'APROBADA', (SELECT id FROM usuario WHERE codigo = '222009845'), 'Obs: examen 3 laboratorios | Aux. Apoyo: 3'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), (SELECT id FROM usuario WHERE codigo = '2204'), '2026-11-07', '08:30:00', '10:00:00', 'EXAMEN', 'Examen Base de Datos 1', 'APROBADA', (SELECT id FROM usuario WHERE codigo = '222009845'), 'Obs: examen 3 laboratorios | Aux. Apoyo: 5'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-45'), (SELECT id FROM usuario WHERE codigo = '2204'), '2026-11-07', '08:30:00', '10:00:00', 'EXAMEN', 'Examen Base de Datos 1', 'APROBADA', (SELECT id FROM usuario WHERE codigo = '222009845'), 'Obs: examen 3 laboratorios | Aux. Apoyo: 5'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-46'), (SELECT id FROM usuario WHERE codigo = '2204'), '2026-11-07', '08:30:00', '10:00:00', 'EXAMEN', 'Examen Base de Datos 1', 'APROBADA', (SELECT id FROM usuario WHERE codigo = '222009845'), 'Obs: examen 3 laboratorios | Aux. Apoyo: 5'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-43'), (SELECT id FROM usuario WHERE codigo = '2204'), '2026-11-07', '08:30:00', '10:00:00', 'EXAMEN', 'Examen Base de Datos 1', 'APROBADA', (SELECT id FROM usuario WHERE codigo = '222009845'), 'Obs: Examen de base 1 | Aux. Apoyo: 5'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-43'), (SELECT id FROM usuario WHERE codigo = '3334'), '2026-11-07', '10:00:00', '12:00:00', 'EXAMEN', 'Evaluación Probabilidades y Estadística I', 'APROBADA', (SELECT id FROM usuario WHERE codigo = '222009845'), 'Obs: Evaluación'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), (SELECT id FROM usuario WHERE codigo = '9801'), '2026-11-07', '10:00:00', '13:00:00', 'EXAMEN', 'Examen de Base de datos 1 R1', 'APROBADA', (SELECT id FROM usuario WHERE codigo = '222009845'), 'Obs: Instalar DB Browser for SQLite'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'AUDITORIO'), (SELECT id FROM usuario WHERE codigo = '4806'), '2026-11-09', '08:30:00', '11:30:00', 'EXAMEN', 'Evaluación INF119 Z1 MAT103 SE', 'APROBADA', (SELECT id FROM usuario WHERE codigo = '222009845'), 'Obs: Aula 11'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'AUDITORIO'), (SELECT id FROM usuario WHERE codigo = '4806'), '2026-11-09', '16:45:00', '18:15:00', 'EXAMEN', 'Evaluación INF119 Z5', 'APROBADA', (SELECT id FROM usuario WHERE codigo = '222009845'), 'Obs: Evaluación'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'AUDITORIO'), (SELECT id FROM usuario WHERE codigo = '5782'), '2026-11-09', '19:45:00', '21:00:00', 'EXAMEN', 'Examen Programación Ensamblador', 'APROBADA', (SELECT id FROM usuario WHERE codigo = '222009845'), 'Obs: Examen'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-43'), (SELECT id FROM usuario WHERE codigo = '6171'), '2026-11-12', '19:00:00', '20:30:00', 'EXAMEN', 'metodología de la investigación', 'RECHAZADA', (SELECT id FROM usuario WHERE codigo = '01'), 'Solicitud caducada no atendida a tiempo'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-44'), (SELECT id FROM usuario WHERE codigo = '3768'), '2026-11-17', '07:00:00', '22:30:00', 'DEFENSA DE PROYECTO', 'INF513 SC - TECNOLOGIA WEB (Defensa de proyecto final)', 'APROBADA', (SELECT id FROM usuario WHERE codigo = '01'), 'Aprobado por Encargado de Laboratorios'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-44'), (SELECT id FROM usuario WHERE codigo = '3768'), '2026-11-18', '07:00:00', '22:30:00', 'DEFENSA DE PROYECTO', 'INF120 SA - TECNOLOGIA WEB (Defensa de proyecto final)', 'APROBADA', (SELECT id FROM usuario WHERE codigo = '01'), 'Aprobado por Encargado de Laboratorios'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-44'), (SELECT id FROM usuario WHERE codigo = '3768'), '2026-11-19', '07:00:00', '13:30:00', 'EVENTO', 'Proyecto Herramientas RDS519 - SA', 'APROBADA', (SELECT id FROM usuario WHERE codigo = '222009845'), 'Obs: Exposición'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-46'), (SELECT id FROM usuario WHERE codigo = '4047'), '2026-11-19', '16:00:00', '18:15:00', 'EXAMEN', 'Exámenes y revisión de proyecto (Estructura de datos 2 -sb)', 'APROBADA', (SELECT id FROM usuario WHERE codigo = '222009845'), 'Obs: Evaluación'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-44'), (SELECT id FROM usuario WHERE codigo = '3768'), '2026-11-20', '07:00:00', '22:30:00', 'DEFENSA DE PROYECTO', 'INF120 SA - TECNOLOGIA WEB (Defensa de proyecto final)', 'APROBADA', (SELECT id FROM usuario WHERE codigo = '01'), 'Aprobado por Encargado de Laboratorios'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-44'), (SELECT id FROM usuario WHERE codigo = '3768'), '2026-11-21', '07:00:00', '12:00:00', 'EXAMEN', 'Examen 3er Parcial INF120-SA : PRO', 'APROBADA', (SELECT id FROM usuario WHERE codigo = '222009845'), 'Obs: Evaluación'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-46'), (SELECT id FROM usuario WHERE codigo = '4047'), '2026-11-26', '16:00:00', '18:15:00', 'EXAMEN', 'Exámenes y revisión de proyecto (Estructura de datos 2 -sb)', 'APROBADA', (SELECT id FROM usuario WHERE codigo = '222009845'), 'Obs: Evaluación'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'AUDITORIO'), (SELECT id FROM usuario WHERE codigo = '4356'), '2026-11-27', '07:00:00', '11:30:00', 'EXAMEN', 'Evaluación Examen Final', 'APROBADA', (SELECT id FROM usuario WHERE codigo = '222009845'), 'Obs: Evaluación (Aula 32) | Aux. Apoyo: 2'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-44'), (SELECT id FROM usuario WHERE codigo = '3768'), '2026-11-27', '07:00:00', '20:30:00', 'EVENTO', 'Proyecto WEB INF513 - SA', 'APROBADA', (SELECT id FROM usuario WHERE codigo = '222009845'), 'Obs: Exposición'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-44'), (SELECT id FROM usuario WHERE codigo = '3768'), '2026-11-28', '07:00:00', '12:00:00', 'EXAMEN', 'Examen 3er Parcial INF120-SA/SF/MV : PROGRAMACIÓN I', 'APROBADA', (SELECT id FROM usuario WHERE codigo = '222009845'), 'Obs: Evaluación'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'AUDITORIO'), (SELECT id FROM usuario WHERE codigo = '3334'), '2026-12-01', '07:00:00', '09:15:00', 'EXAMEN', 'Sistemas de información II', 'APROBADA', (SELECT id FROM usuario WHERE codigo = '01'), NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'AUDITORIO'), (SELECT id FROM usuario WHERE codigo = '3334'), '2026-12-02', '07:00:00', '08:30:00', 'EXAMEN', 'Ingeniería de requisitos', 'PENDIENTE', NULL, 'Obs: examen teórico, Aula para intercambio (23)'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-46'), (SELECT id FROM usuario WHERE codigo = '4047'), '2026-12-03', '16:00:00', '18:15:00', 'EXAMEN', 'Exámenes y revisión de proyecto (Estructura de datos 2 -sb)', 'PENDIENTE', NULL, 'Obs: Evaluación'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-43'), (SELECT id FROM usuario WHERE codigo = '29405'), '2026-12-10', '14:00:00', '16:00:00', 'EXAMEN', 'Examen final de Metodologia', 'PENDIENTE', NULL, NULL);
+
+-- SCRIPT DML: INSERTS DE NOTIFICACIONES (DATOS REALES)
+INSERT INTO notificacion (usuario_id, asunto, cuerpo, reserva_id, enviado_en) VALUES
+  ((SELECT id FROM usuario WHERE codigo = '26693'), 'Falta registrada', 'No se registró entrada al turno #152 de hoy 07:00-11:00 (LAB-45); se registró FALTA.', NULL, '2026-11-17 09:26:07.739116'),
+  ((SELECT id FROM usuario WHERE codigo = '01'), 'Falta de auxiliar en turno #152', 'No se registró entrada al turno #152 de hoy 07:00-11:00 (LAB-45); se registró FALTA.', NULL, '2026-11-17 09:26:12.785193'),
+  ((SELECT id FROM usuario WHERE codigo = '222009845'), 'Falta de auxiliar en turno #152', 'No se registró entrada al turno #152 de hoy 07:00-11:00 (LAB-45); se registró FALTA.', NULL, '2026-11-17 09:26:16.48912'),
+  ((SELECT id FROM usuario WHERE codigo = '222058730'), 'Falta de auxiliar en turno #152', 'No se registró entrada al turno #152 de hoy 07:00-11:00 (LAB-45); se registró FALTA.', NULL, '2026-11-17 09:26:20.109358'),
+  ((SELECT id FROM usuario WHERE codigo = '26700'), 'Falta registrada', 'No se registró entrada al turno #157 de hoy 07:00-11:00 (LAB-41); se registró FALTA.', NULL, '2026-11-17 09:26:25.832753'),
+  ((SELECT id FROM usuario WHERE codigo = '01'), 'Falta de auxiliar en turno #157', 'No se registró entrada al turno #157 de hoy 07:00-11:00 (LAB-41); se registró FALTA.', NULL, '2026-11-17 09:26:29.937489'),
+  ((SELECT id FROM usuario WHERE codigo = '222009845'), 'Falta de auxiliar en turno #157', 'No se registró entrada al turno #157 de hoy 07:00-11:00 (LAB-41); se registró FALTA.', NULL, '2026-11-17 09:26:34.186789'),
+  ((SELECT id FROM usuario WHERE codigo = '222058730'), 'Falta de auxiliar en turno #157', 'No se registró entrada al turno #157 de hoy 07:00-11:00 (LAB-41); se registró FALTA.', NULL, '2026-11-17 09:26:37.792979'),
+  ((SELECT id FROM usuario WHERE codigo = '29534'), 'Falta registrada', 'No se registró entrada al turno #167 de hoy 07:00-11:00 (LAB-44); se registró FALTA.', NULL, '2026-11-17 09:26:43.041057'),
+  ((SELECT id FROM usuario WHERE codigo = '01'), 'Falta de auxiliar en turno #167', 'No se registró entrada al turno #167 de hoy 07:00-11:00 (LAB-44); se registró FALTA.', NULL, '2026-11-17 09:26:47.139007'),
+  ((SELECT id FROM usuario WHERE codigo = '222009845'), 'Falta de auxiliar en turno #167', 'No se registró entrada al turno #167 de hoy 07:00-11:00 (LAB-44); se registró FALTA.', NULL, '2026-11-17 09:26:50.77823'),
+  ((SELECT id FROM usuario WHERE codigo = '222058730'), 'Falta de auxiliar en turno #167', 'No se registró entrada al turno #167 de hoy 07:00-11:00 (LAB-44); se registró FALTA.', NULL, '2026-11-17 09:26:54.303042'),
+  ((SELECT id FROM usuario WHERE codigo = '29532'), 'Falta registrada', 'No se registró entrada al turno #162 de hoy 07:00-11:00 (LAB-43); se registró FALTA.', NULL, '2026-11-17 09:26:59.46648'),
+  ((SELECT id FROM usuario WHERE codigo = '01'), 'Falta de auxiliar en turno #162', 'No se registró entrada al turno #162 de hoy 07:00-11:00 (LAB-43); se registró FALTA.', NULL, '2026-11-17 09:27:04.134614'),
+  ((SELECT id FROM usuario WHERE codigo = '222009845'), 'Falta de auxiliar en turno #162', 'No se registró entrada al turno #162 de hoy 07:00-11:00 (LAB-43); se registró FALTA.', NULL, '2026-11-17 09:27:08.468628'),
+  ((SELECT id FROM usuario WHERE codigo = '222058730'), 'Falta de auxiliar en turno #162', 'No se registró entrada al turno #162 de hoy 07:00-11:00 (LAB-43); se registró FALTA.', NULL, '2026-11-17 09:27:12.754795'),
+  ((SELECT id FROM usuario WHERE codigo = '29531'), 'Falta registrada', 'No se registró entrada al turno #187 de hoy 11:00-15:00 (LAB-41); se registró FALTA.', NULL, '2026-11-17 12:10:05.24248'),
+  ((SELECT id FROM usuario WHERE codigo = '01'), 'Falta de auxiliar en turno #187', 'No se registró entrada al turno #187 de hoy 11:00-15:00 (LAB-41); se registró FALTA.', NULL, '2026-11-17 12:10:11.450606'),
+  ((SELECT id FROM usuario WHERE codigo = '222009845'), 'Falta de auxiliar en turno #187', 'No se registró entrada al turno #187 de hoy 11:00-15:00 (LAB-41); se registró FALTA.', NULL, '2026-11-17 12:10:15.923688'),
+  ((SELECT id FROM usuario WHERE codigo = '222058730'), 'Falta de auxiliar en turno #187', 'No se registró entrada al turno #187 de hoy 11:00-15:00 (LAB-41); se registró FALTA.', NULL, '2026-11-17 12:10:20.240942'),
+  ((SELECT id FROM usuario WHERE codigo = '29528'), 'Falta registrada', 'No se registró entrada al turno #177 de hoy 11:00-15:00 (LAB-43); se registró FALTA.', NULL, '2026-11-17 12:10:25.546057'),
+  ((SELECT id FROM usuario WHERE codigo = '01'), 'Falta de auxiliar en turno #177', 'No se registró entrada al turno #177 de hoy 11:00-15:00 (LAB-43); se registró FALTA.', NULL, '2026-11-17 12:10:30.635066'),
+  ((SELECT id FROM usuario WHERE codigo = '222009845'), 'Falta de auxiliar en turno #177', 'No se registró entrada al turno #177 de hoy 11:00-15:00 (LAB-43); se registró FALTA.', NULL, '2026-11-17 12:10:35.369695'),
+  ((SELECT id FROM usuario WHERE codigo = '222058730'), 'Falta de auxiliar en turno #177', 'No se registró entrada al turno #177 de hoy 11:00-15:00 (LAB-43); se registró FALTA.', NULL, '2026-11-17 12:10:40.127489'),
+  ((SELECT id FROM usuario WHERE codigo = '29396'), 'Falta registrada', 'No se registró entrada al turno #182 de hoy 11:00-15:00 (LAB-41); se registró FALTA.', NULL, '2026-11-17 12:10:46.425738'),
+  ((SELECT id FROM usuario WHERE codigo = '01'), 'Falta de auxiliar en turno #182', 'No se registró entrada al turno #182 de hoy 11:00-15:00 (LAB-41); se registró FALTA.', NULL, '2026-11-17 12:10:51.64364'),
+  ((SELECT id FROM usuario WHERE codigo = '222009845'), 'Falta de auxiliar en turno #182', 'No se registró entrada al turno #182 de hoy 11:00-15:00 (LAB-41); se registró FALTA.', NULL, '2026-11-17 12:10:56.813644'),
+  ((SELECT id FROM usuario WHERE codigo = '222058730'), 'Falta de auxiliar en turno #182', 'No se registró entrada al turno #182 de hoy 11:00-15:00 (LAB-41); se registró FALTA.', NULL, '2026-11-17 12:11:01.19856'),
+  ((SELECT id FROM usuario WHERE codigo = '29405'), 'Mensaje interno de Jairo Sanabria Ortega', 'Hola colega, ¿podrías cubrir mi turno del próximo lunes?  —  Responda con ENVMSJ["222009845","su respuesta"]; vea todos sus mensajes con LISMSJ["*"].', NULL, '2026-11-17 15:01:15.047257'),
+  ((SELECT id FROM usuario WHERE codigo = '222009845'), 'Mensaje interno de Jairo Sanabria Ortega', 'Lo siento no podre tengo otros compromisos  —  Responda con ENVMSJ["29405","su respuesta"]; vea todos sus mensajes con LISMSJ["*"].', NULL, '2026-11-17 15:14:01.436563'),
+  ((SELECT id FROM usuario WHERE codigo = '3334'), 'Reserva #30 APROBADA', 'Su reserva de AUDITORIO el 2026-12-01 de 07:00-09:15 (EXAMEN: Sistemas de información II) fue aprobada por Luis Enrique Higuera Huanca.', 32, '2026-11-18 00:15:47.216888'),
+  ((SELECT id FROM usuario WHERE codigo = '6171'), 'Reserva #33 RECHAZADA', 'Su reserva de LAB-43 el 2026-11-12 de 19:00-20:30 fue rechazada. Motivo: Solicitud caducada no atendida a tiempo. Consulte otros laboratorios libres con CONDIS["2026-11-12","19:00","20:30"].', 21, '2026-11-18 00:16:13.270957'),
+  ((SELECT id FROM usuario WHERE codigo = '01'), 'Nueva solicitud de reserva #40', 'Jairo Sanabria Ortega (Auxiliar) solicita LAB-43 el 2026-12-10 de 14:00-16:00 para EXAMEN: Examen final de Metodologia. Apruebe con APRRES["40"] o rechace con RECRES["40","motivo"].', 35, '2026-11-18 00:19:23.83262'),
+  ((SELECT id FROM usuario WHERE codigo = '222009845'), 'Nueva solicitud de reserva #40', 'Jairo Sanabria Ortega (Auxiliar) solicita LAB-43 el 2026-12-10 de 14:00-16:00 para EXAMEN: Examen final de Metodologia. Apruebe con APRRES["40"] o rechace con RECRES["40","motivo"].', 35, '2026-11-18 00:19:28.908562'),
+  ((SELECT id FROM usuario WHERE codigo = '222058730'), 'Nueva solicitud de reserva #40', 'Jairo Sanabria Ortega (Auxiliar) solicita LAB-43 el 2026-12-10 de 14:00-16:00 para EXAMEN: Examen final de Metodologia. Apruebe con APRRES["40"] o rechace con RECRES["40","motivo"].', 35, '2026-11-18 00:19:33.110052');
+

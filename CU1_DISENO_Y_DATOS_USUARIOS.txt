@@ -1,0 +1,423 @@
+================================================================================
+          SISTEMA DE GESTION DE LABORATORIOS FICCT - GRUPO 08 SA
+      CASO DE USO 1 (CU1): GESTION DE USUARIOS, ROLES Y SEGURIDAD
+================================================================================
+
+--------------------------------------------------------------------------------
+1. DISENO LOGICO (MODELO CONCEPTUAL / RELACIONAL)
+--------------------------------------------------------------------------------
+El modulo de Seguridad y Gestion de Usuarios (CU1) administra las identidades,
+cuentas de correo electronico autorizadas y privilegios de acceso al sistema.
+
+A. ENTIDADES Y DEFINICION LOGICA:
+  * ROL (id, codigo, nombre, descripcion)
+    Define los perfiles del sistema: Encargado (ENC), Director (DIR),
+    Docente (DOC) y Auxiliar (AUX).
+
+  * USUARIO (id, codigo, nombre, apellido, correo, telefono, cargo, aula, gestion, rol_id, estado, creado_en)
+    Almacena las personas autorizadas que interactuan via correo electronico.
+
+  * COMANDO (id, nombre, descripcion)
+    Catalogo de comandos interpretables por el procesador de correos.
+
+  * ROL_COMANDO (rol_id, comando_id)
+    Matriz de permisos (M:N) que asocia que comandos puede ejecutar cada rol.
+
+B. RELACIONES Y CARDINALIDADES:
+  * ROL (1) ------ (N) USUARIO
+    Un rol puede estar asignado a uno o muchos usuarios. Todo usuario tiene asignado
+    exactamente un rol obligatorio mediante la clave foranea 'rol_id'.
+  * ROL (N) ------ (M) COMANDO
+    Relacion de muchos a muchos implementada a traves de la tabla puente ROL_COMANDO.
+
+C. REGLAS DE NEGOCIO E INTEGRIDAD:
+  1. Unicidad de Correo: El correo electronico debe ser unico y valido (Gmail).
+  2. Unicidad de Codigo: Cada usuario posee un codigo unico (Registro Universitario o COD_EMP).
+  3. Dominio de Roles: Exclusivamente 'ENC', 'DIR', 'DOC' o 'AUX'.
+  4. Estado y Baja Logica: El estado solo admite 'ACTIVO' o 'INACTIVO'. No se borran
+     usuarios fisicamente para mantener la integridad referencial historica.
+  5. Atributos de Auxiliares: Para rol 'AUX', opcionalmente se almacena el aula asignada
+     (ej. '236-41') y la gestion academica activa (ej. '2-2026').
+
+--------------------------------------------------------------------------------
+2. DISENO FISICO (DICCIONARIO DE DATOS EN POSTGRESQL)
+--------------------------------------------------------------------------------
+
+TABLA: rol
++-------------+--------------+----------+---------------------------------------------------+
+| Columna     | Tipo         | Nulo     | Descripcion / Observacion                         |
++-------------+--------------+----------+---------------------------------------------------+
+| id          | INTEGER      | NOT NULL | Clave primaria ( SERIAL )                         |
+| codigo      | VARCHAR(3)   | NOT NULL | Codigo unico del rol ( ENC, DIR, DOC, AUX )       |
+| nombre      | VARCHAR(50)  | NOT NULL | Nombre descriptivo del rol                        |
+| descripcion | VARCHAR(200) | Nulo     | Detalle y alcance de funciones del rol            |
++-------------+--------------+----------+---------------------------------------------------+
+
+TABLA: usuario
++-------------+--------------+----------+---------------------------------------------------+
+| Columna     | Tipo         | Nulo     | Descripcion / Observacion                         |
++-------------+--------------+----------+---------------------------------------------------+
+| id          | INTEGER      | NOT NULL | Clave primaria ( SERIAL )                         |
+| codigo      | VARCHAR(20)  | NOT NULL | Codigo unico ( Registro Univ., COD_EMP, D01... )  |
+| nombre      | VARCHAR(60)  | NOT NULL | Nombres del usuario                               |
+| apellido    | VARCHAR(60)  | NOT NULL | Apellidos del usuario                             |
+| correo      | VARCHAR(100) | NOT NULL | Correo electronico unico (Gmail de envio)         |
+| telefono    | VARCHAR(20)  | Nulo     | Telefono o celular de contacto                    |
+| cargo       | VARCHAR(60)  | Nulo     | Cargo institucional (ej. Decano, Vicedecano)      |
+| aula        | VARCHAR(20)  | Nulo     | Modulo y aula asignada (ej. 236-41 para AUX)      |
+| gestion     | VARCHAR(10)  | Nulo     | Gestion del semestre asignado (ej. 2-2026 )       |
+| rol_id      | INTEGER      | NOT NULL | Clave foranea referencia a rol(id)                |
+| estado      | VARCHAR(10)  | NOT NULL | 'ACTIVO' o 'INACTIVO' (DEFAULT 'ACTIVO')          |
+| creado_en   | TIMESTAMP    | NOT NULL | Fecha y hora de creacion (DEFAULT CURRENT_TIME..) |
++-------------+--------------+----------+---------------------------------------------------+
+
+TABLA: comando
++-------------+--------------+----------+---------------------------------------------------+
+| Columna     | Tipo         | Nulo     | Descripcion / Observacion                         |
++-------------+--------------+----------+---------------------------------------------------+
+| id          | INTEGER      | NOT NULL | Clave primaria ( SERIAL )                         |
+| nombre      | VARCHAR(10)  | NOT NULL | Nombre unico del comando (ej. INSUSU, LISRES)     |
+| descripcion | VARCHAR(200) | NOT NULL | Descripcion de la funcion y parametros            |
++-------------+--------------+----------+---------------------------------------------------+
+
+TABLA: rol_comando
++-------------+--------------+----------+---------------------------------------------------+
+| Columna     | Tipo         | Nulo     | Descripcion / Observacion                         |
++-------------+--------------+----------+---------------------------------------------------+
+| rol_id      | INTEGER      | NOT NULL | Clave foranea referencia a rol(id)                |
+| comando_id  | INTEGER      | NOT NULL | Clave foranea referencia a comando(id)            |
++-------------+--------------+----------+---------------------------------------------------+
+  * Clave Primaria compuesta: (rol_id, comando_id)
+
+--------------------------------------------------------------------------------
+3. TABLAS RELLENAS CON DATOS REALES DE LA BASE DE DATOS
+--------------------------------------------------------------------------------
+
+A. DATOS DE LA TABLA: rol
++----+--------+-----------------------------+--------------------------------------------------------------------+
+| id | codigo | nombre                      | descripcion                                                        |
++----+--------+-----------------------------+--------------------------------------------------------------------+
+| 1  | ENC    | Encargado de Laboratorios   | Administra el sistema                                              |
+| 2  | DOC    | Docente                     | Solicita reservas y reporta incidencias                            |
+| 3  | AUX    | Auxiliar                    | Atiende los laboratorios en su turno                               |
+| 4  | DIR    | Director de Carrera         | Solicita reservas y consulta reportes                              |
++----+--------+-----------------------------+--------------------------------------------------------------------+
+
+B. DATOS DE LA TABLA: usuario
++-----+------------+---------------------------------+---------------------------------+-----------------------------------+------------+-------------+---------+--------+----------+
+| id  | codigo     | nombre                          | apellido                        | correo                            | telefono   | aula        | gestion | rol    | estado   |
++-----+------------+---------------------------------+---------------------------------+-----------------------------------+------------+-------------+---------+--------+----------+
+| 1   | 222058730  | Oliver                          | Ventura Valverde                | venturavalverdeo@gmail.com        |            |             |         | ENC    | ACTIVO   |
+| 2   | 222009845  | Jairo                           | Sanabria Ortega                 | sanabriajairo26@gmail.com         | 68835550   |             |         | ENC    | ACTIVO   |
+| 3   | 01         | Luis Enrique                    | Higuera Huanca                  | encargado.lab236@gmail.com        | 77323126   |             |         | ENC    | ACTIVO   |
+| 183 | 215049616  | Carlos Alfonso                  | Salazar Alcocer                 | salazaralcocercarlos97@gmail.com  | 70000000   |             |         | ENC    | ACTIVO   |
+| 124 | D01        | MIGUEL JESUS                    | PEINADO PEREIRA                 | mpeinado@gmail.com                | 70002623   |             |         | DIR    | ACTIVO   |
+| 170 | D02        | MAURICIO CHRISTI                | CABALLERO RUA                   | mcaballero@gmail.com              | 70008160   |             |         | DIR    | ACTIVO   |
+| 87  | 186        | VICTOR HUGO                     | ORTIZ ARTEAGA                   | vortiz@gmail.com                  | 70000186   |             |         | DOC    | ACTIVO   |
+| 88  | 599        | JUAN MANUEL                     | CHAHIN AVICHACRA                | jchahin@gmail.com                 | 70000599   |             |         | DOC    | ACTIVO   |
+| 89  | 603        | SANCHEZ DE MANCILLA PI          | DAVALOS                         | sdavalos@gmail.com                | 70000603   |             |         | DOC    | ACTIVO   |
+| 90  | 625        | RICARDO                         | ZUNA VILLAGOMEZ                 | rzuna@gmail.com                   | 70000625   |             |         | DOC    | ACTIVO   |
+| 91  | 652        | JULIO MARTIN                    | CORTEZ UZEDA                    | jcortez@gmail.com                 | 70000652   |             |         | DOC    | ACTIVO   |
+| 92  | 670        | FELIX                           | SILES MUÑOZ                     | fsiles@gmail.com                  | 70000670   |             |         | DOC    | ACTIVO   |
+| 93  | 676        | CORRADO                         | VALLET VALLET                   | cvallet@gmail.com                 | 70000676   |             |         | DOC    | ACTIVO   |
+| 94  | 682        | DANIEL LUIS                     | ZEBALLOS PAREDES                | dzeballos@gmail.com               | 70000682   |             |         | DOC    | ACTIVO   |
+| 95  | 702        | BRAULIO                         | CACERES CHACON                  | bcaceres@gmail.com                | 70000702   |             |         | DOC    | ACTIVO   |
+| 96  | 862        | EDWIN                           | VARGAS YAPURA                   | evargas@gmail.com                 | 70000862   |             |         | DOC    | ACTIVO   |
+| 97  | 887        | MARCOS OSCAR                    | FLORES FLORES                   | mflores@gmail.com                 | 70000887   |             |         | DOC    | ACTIVO   |
+| 98  | 990        | ENRIQUE                         | MORENO SUAREZ                   | emoreno@gmail.com                 | 70000990   |             |         | DOC    | ACTIVO   |
+| 99  | 1031       | VICTOR FERNANDO                 | MONRROY DIPP                    | vmonrroy@gmail.com                | 70001031   |             |         | DOC    | ACTIVO   |
+| 100 | 1033       | NANCY                           | ABARCA SOTA                     | nabarca@gmail.com                 | 70001033   |             |         | DOC    | ACTIVO   |
+| 101 | 1035       | JULIO                           | TEJERINA GUERRA                 | jtejerina@gmail.com               | 70001035   |             |         | DOC    | ACTIVO   |
+| 102 | 1040       | JORGE                           | CHAU WONG                       | jchau@gmail.com                   | 70001040   |             |         | DOC    | ACTIVO   |
+| 103 | 1061       | EDUARDO                         | GIANELLA PEREDO                 | egianella@gmail.com               | 70001061   |             |         | DOC    | ACTIVO   |
+| 104 | 1250       | CARLOS                          | MIRANDA CARRASCO                | cmiranda@gmail.com                | 70001250   |             |         | DOC    | ACTIVO   |
+| 105 | 1251       | ENRIQUE                         | SANCHEZ VELASCO                 | esanchez@gmail.com                | 70001251   |             |         | DOC    | ACTIVO   |
+| 106 | 1263       | ANGEL                           | VELASCO GUAMAN                  | avelasco@gmail.com                | 70001263   |             |         | DOC    | ACTIVO   |
+| 107 | 1265       | JULIO                           | ZUNA VILLAGOMEZ                 | jzuna@gmail.com                   | 70001265   |             |         | DOC    | ACTIVO   |
+| 108 | 1395       | BERTHY RONALD                   | DURAN CESPEDES                  | bduran@gmail.com                  | 70001395   |             |         | DOC    | ACTIVO   |
+| 109 | 1396       | SAUL                            | SEVERICHE TOLEDO                | sseveriche@gmail.com              | 70001396   |             |         | DOC    | ACTIVO   |
+| 110 | 1642       | ALBERTO                         | MOLLO MAMANI                    | amollo@gmail.com                  | 70001642   |             |         | DOC    | ACTIVO   |
+| 111 | 1683       | JOSE SAID                       | HINOJOSA SAAVEDRA               | jhinojosa@gmail.com               | 70001683   |             |         | DOC    | ACTIVO   |
+| 112 | 1719       | IVAN VLADISHLAV                 | SELAYA GARVIZU                  | iselaya@gmail.com                 | 70001719   |             |         | DOC    | ACTIVO   |
+| 113 | 1805       | CIRO EDGAR                      | VARGAS CASTILLO                 | cvargas@gmail.com                 | 70001805   |             |         | DOC    | ACTIVO   |
+| 114 | 1839       | MAGALY                          | MORALES MENDEZ                  | mmorales@gmail.com                | 70001839   |             |         | DOC    | ACTIVO   |
+| 115 | 1872       | RUFINO WILBERTO                 | ROMAN ROCA                      | rroman@gmail.com                  | 70001872   |             |         | DOC    | ACTIVO   |
+| 116 | 2006       | DE OROPEZA ELIZ                 | CLAURE MEDRANO                  | dclaure@gmail.com                 | 70002006   |             |         | DOC    | ACTIVO   |
+| 117 | 2204       | JOSUE OBED                      | VEIZAGA GONZALES                | jveizaga@gmail.com                | 70002204   |             |         | DOC    | ACTIVO   |
+| 118 | 2205       | GINO                            | BARROSO VIRUEZ                  | gbarroso@gmail.com                | 70002205   |             |         | DOC    | ACTIVO   |
+| 119 | 2351       | EUDAL                           | AVENDAÑO GONZALES               | eavendaño@gmail.com               | 70002351   |             |         | DOC    | ACTIVO   |
+| 120 | 2384       | VICTOR MILTON                   | CAYOJA LUCANA                   | vcayoja@gmail.com                 | 70002384   |             |         | DOC    | ACTIVO   |
+| 121 | 2399       | MARIO WILSON                    | GRAGEDA ESCUDERO                | mgrageda@gmail.com                | 70002399   |             |         | DOC    | ACTIVO   |
+| 122 | 2453       | RICARDO                         | TERRAZAS SOTO                   | rterrazas@gmail.com               | 70002453   |             |         | DOC    | ACTIVO   |
+| 123 | 2459       | FREDDY MIGUEL                   | OQUENDO HEREDIA                 | foquendo@gmail.com                | 70002459   |             |         | DOC    | ACTIVO   |
+| 125 | 2624       | UBALDO                          | PEREZ FERREIRA                  | uperez@gmail.com                  | 70002624   |             |         | DOC    | ACTIVO   |
+| 126 | 2626       | ROLANDO ANTONI                  | MARTINEZ CANEDO                 | rmartinez@gmail.com               | 70002626   |             |         | DOC    | ACTIVO   |
+| 127 | 2696       | JORGE ANTONI                    | GONZALES SANDOVAL               | jgonzales@gmail.com               | 70002696   |             |         | DOC    | ACTIVO   |
+| 128 | 2717       | JORGE                           | CANO CESPEDES                   | jcano@gmail.com                   | 70002717   |             |         | DOC    | ACTIVO   |
+| 129 | 2838       | LUIS PERCY                      | TAPIA FLORES                    | ltapia@gmail.com                  | 70002838   |             |         | DOC    | ACTIVO   |
+| 130 | 2848       | JUAN CARLOS                     | CONTRERAS VILLEGAS              | jcontreras@gmail.com              | 70002848   |             |         | DOC    | ACTIVO   |
+| 131 | 3096       | DOMINGO                         | AGUILAR MARTINEZ                | daguilar@gmail.com                | 70003096   |             |         | DOC    | ACTIVO   |
+| 132 | 3146       | IRMA ISABEL                     | ARGOTE CLAROS                   | iargote@gmail.com                 | 70003146   |             |         | DOC    | ACTIVO   |
+| 133 | 3334       | ANGELICA                        | GARZON CUELLAR                  | agarzon@gmail.com                 | 70003334   |             |         | DOC    | ACTIVO   |
+| 134 | 3768       | EVANS                           | BALCAZAR VEIZAGA                | ebalcazar@gmail.com               | 70003768   |             |         | DOC    | ACTIVO   |
+| 135 | 3786       | MARCIO                          | CARVAJAL CORDERO                | mcarvajal@gmail.com               | 70003786   |             |         | DOC    | ACTIVO   |
+| 136 | 3955       | RUBEN                           | OROSCO GOMEZ                    | rorosco@gmail.com                 | 70003955   |             |         | DOC    | ACTIVO   |
+| 137 | 4047       | CESPEDES ROBERTO CA             | VACA PINTO                      | cvaca@gmail.com                   | 70004047   |             |         | DOC    | ACTIVO   |
+| 138 | 4122       | EIDY MARIA                      | SCHMITTER SCHMITTER             | eschmitter@gmail.com              | 70004122   |             |         | DOC    | ACTIVO   |
+| 139 | 4165       | CARMEN LILIA                    | JUSTINIANO FLORES               | cjustiniano@gmail.com             | 70004165   |             |         | DOC    | ACTIVO   |
+| 140 | 4167       | VICTOR HUGO                     | LOBO LIMPIAS                    | vlobo@gmail.com                   | 70004167   |             |         | DOC    | ACTIVO   |
+| 141 | 4220       | MARIO MILTON                    | LOPEZ WINNIPEG                  | mlopezw@gmail.com                 | 70004220   |             |         | DOC    | ACTIVO   |
+| 142 | 4221       | MARY DUNNIA                     | LOPEZ NEGRETTY                  | mlopez@gmail.com                  | 70004221   |             |         | DOC    | ACTIVO   |
+| 143 | 4356       | SARAH MIRNA                     | MARTINEZ CARDONA                | smartinez@gmail.com               | 70004356   |             |         | DOC    | ACTIVO   |
+| 144 | 4357       | CARLOS ROBERTO                  | LAZO ARTEAGA                    | clazo@gmail.com                   | 70004357   |             |         | DOC    | ACTIVO   |
+| 145 | 4594       | BARTOLO JAVIER                  | ACOSTA CABEZAS                  | bacosta@gmail.com                 | 70004594   |             |         | DOC    | ACTIVO   |
+| 146 | 4606       | EDGAR ZACA                      | RISSIOTTI VELASQUEZ             | erissiotti@gmail.com              | 70004606   |             |         | DOC    | ACTIVO   |
+| 147 | 4616       | MODESTO FRANKL                  | CALDERON FLORES                 | mcalderon@gmail.com               | 70004616   |             |         | DOC    | ACTIVO   |
+| 148 | 4619       | JUAN RUBEN                      | CABELLO MERIDA                  | jcabello@gmail.com                | 70004619   |             |         | DOC    | ACTIVO   |
+| 149 | 4672       | JHONNY DAVID                    | ATILA LIJERON                   | jatila@gmail.com                  | 70004672   |             |         | DOC    | ACTIVO   |
+| 150 | 4806       | KATIME ESTHER                   | GUTIERREZ BRUNO                 | kgutierrez@gmail.com              | 70004806   |             |         | DOC    | ACTIVO   |
+| 151 | 5148       | TOMAS                           | VALDELOMAR ORELLANA             | tvaldelomar@gmail.com             | 70005148   |             |         | DOC    | ACTIVO   |
+| 152 | 5153       | ROBERTO CARLOS                  | PAZ MENDOZA                     | rpaz@gmail.com                    | 70005153   |             |         | DOC    | ACTIVO   |
+| 153 | 5154       | GLORIA                          | TORREZ DOMINGUEZ                | gtorrez@gmail.com                 | 70005154   |             |         | DOC    | ACTIVO   |
+| 154 | 5243       | MARIO                           | CAMPOS BARRERA                  | mcampos@gmail.com                 | 70005243   |             |         | DOC    | ACTIVO   |
+| 155 | 5248       | SHARON KENNY                    | ALIAGA HOWARD                   | saliaga@gmail.com                 | 70005248   |             |         | DOC    | ACTIVO   |
+| 156 | 5254       | MARCOS RODRIGO                  | LAMAS RODRIGUEZ                 | mlamas@gmail.com                  | 70005254   |             |         | DOC    | ACTIVO   |
+| 157 | 5318       | MELBY                           | SUAREZ CESPEDES                 | msuarez@gmail.com                 | 70005318   |             |         | DOC    | ACTIVO   |
+| 158 | 5782       | VALENTIN VICTOR                 | FLORES GUZMAN                   | vflores@gmail.com                 | 70005782   |             |         | DOC    | ACTIVO   |
+| 159 | 5903       | JUAN CARLOS                     | PEINADO PEREIRA                 | jpeinado@gmail.com                | 70005903   |             |         | DOC    | ACTIVO   |
+| 160 | 5933       | JHONNY                          | CASTRO MARISCAL                 | jcastro@gmail.com                 | 70005933   |             |         | DOC    | ACTIVO   |
+| 161 | 5937       | MAURO                           | CABRERA PEÑA                    | mcabrera@gmail.com                | 70005937   |             |         | DOC    | ACTIVO   |
+| 162 | 6171       | SHIRLEY EULAL                   | PEREZ DELGADILLO                | sperez@gmail.com                  | 70006171   |             |         | DOC    | ACTIVO   |
+| 163 | 6521       | EDWIN                           | CALLE TERRAZAS                  | ecalle@gmail.com                  | 70006521   |             |         | DOC    | ACTIVO   |
+| 164 | 6532       | MAGNO EDWIN                     | CALIZAYA AJHUACHO               | mcalizaya@gmail.com               | 70006532   |             |         | DOC    | ACTIVO   |
+| 165 | 7213       | JOSE JUNIOR                     | VILLAGOMEZ MELGAR               | jvillagomez@gmail.com             | 70007213   |             |         | DOC    | ACTIVO   |
+| 166 | 7214       | LEONARDO                        | VARGAS PEÑA                     | lvargas@gmail.com                 | 70007214   |             |         | DOC    | ACTIVO   |
+| 167 | 7407       | SEBASTIAN                       | LAZO QUISPE                     | slazo@gmail.com                   | 70007407   |             |         | DOC    | ACTIVO   |
+| 168 | 7610       | RONALD                          | JUSTINIANO ROCA                 | rjustiniano@gmail.com             | 70007610   |             |         | DOC    | ACTIVO   |
+| 169 | 7611       | MIGUEL ANGEL                    | GUTHRIE PACHECO                 | mguthrie@gmail.com                | 70007611   |             |         | DOC    | ACTIVO   |
+| 171 | 8636       | EVELYN VANESA                   | SORIA AVILA                     | esoria@gmail.com                  | 70008636   |             |         | DOC    | ACTIVO   |
+| 172 | 8651       | JORGE MARCELO                   | ROSALES FUENTES                 | jrosales@gmail.com                | 70008651   |             |         | DOC    | ACTIVO   |
+| 173 | 8750       | JONATHAN FELIX                  | GUARACHI SOLANO                 | jguarachi@gmail.com               | 70008750   |             |         | DOC    | ACTIVO   |
+| 174 | 8784       | ANDRES                          | CARRENO PEREIRA                 | acarreno@gmail.com                | 70008784   |             |         | DOC    | ACTIVO   |
+| 175 | 8879       | LUZ DIANA                       | TORREZ CAMACHO                  | ltorrez@gmail.com                 | 70008879   |             |         | DOC    | ACTIVO   |
+| 176 | 9416       | ROLANDO                         | SALVATIERRA MERCADO             | rsalvatierra@gmail.com            | 70009416   |             |         | DOC    | ACTIVO   |
+| 177 | 9494       | GUSTAVO ADOLFO                  | OROPEZA CLAURE                  | goropeza@gmail.com                | 70009494   |             |         | DOC    | ACTIVO   |
+| 178 | 9554       | EDWIN ALEJANDRO                 | SANCHEZ RIOJA                   | esanchezr@gmail.com               | 70009554   |             |         | DOC    | ACTIVO   |
+| 179 | 9555       | PAUL FERNANDO                   | GRIMALDO BRAVO                  | pgrimaldo@gmail.com               | 70009555   |             |         | DOC    | ACTIVO   |
+| 180 | 9556       | GERMAN FERNANDO                 | MARQUEZ PARADA                  | gmarquez@gmail.com                | 70009556   |             |         | DOC    | ACTIVO   |
+| 181 | 9557       | GERMAN                          | ALPIRE RIVERO                   | galpire@gmail.com                 | 70009557   |             |         | DOC    | ACTIVO   |
+| 182 | 9801       | ARIEL                           | VEGA                            | avega@gmail.com                   | 70009801   |             |         | DOC    | ACTIVO   |
+| 56  | 29395      | Carlos Leonel                   | Barrios Mayorga                 | carlos.barrios@gmail.com          |            | 236-41      | 2-2026  | AUX    | ACTIVO   |
+| 57  | 29396      | Cesar Alejandro                 | Caballero Caballero             | cesar.caballero@gmail.com         |            | 236-41      | 2-2026  | AUX    | ACTIVO   |
+| 58  | 29397      | Christian Alexander             | Carrion Ojeda                   | christian.carrion@gmail.com       |            | 236-41      | 2-2026  | AUX    | ACTIVO   |
+| 59  | 28204      | Eliezer                         | Chavez Salas                    | eliezer.chavez@gmail.com          |            | 236-36      | 2-2026  | AUX    | ACTIVO   |
+| 60  | 28207      | Benjamin                        | Condori Vasquez                 | benjamin.condori@gmail.com        |            | 236-41      | 2-2026  | AUX    | ACTIVO   |
+| 61  | 29398      | Fernando Daniel                 | Cossio Aranda                   | fernando.cossio@gmail.com         |            | 236-43      | 2-2026  | AUX    | ACTIVO   |
+| 62  | 28210      | Juliano Rodrigo                 | Eguez Montero                   | juliano.eguez@gmail.com           |            | 123-03      | 2-2026  | AUX    | ACTIVO   |
+| 63  | 29399      | Raul                            | Farell Vaca                     | raul.farell@gmail.com             |            | 236-43      | 2-2026  | AUX    | ACTIVO   |
+| 64  | 29400      | Luis Miguel                     | Fernandez Beltran               | luis.fernandez@gmail.com          |            | 123-03      | 2-2026  | AUX    | ACTIVO   |
+| 65  | 29534      | Jose Carlo                      | Fernandez Rodas                 | jose.fernandez@gmail.com          |            | 236-44      | 2-2026  | AUX    | ACTIVO   |
+| 66  | 29529      | Camila Adriana                  | Galviz Aramayo                  | camila.galviz@gmail.com           |            | 236-43      | 2-2026  | AUX    | ACTIVO   |
+| 67  | 29533      | Jose Carlos                     | Giron Solano                    | jose.giron@gmail.com              |            | 236-41      | 2-2026  | AUX    | ACTIVO   |
+| 68  | 24307      | Shirley Angie                   | Gutierrez Ortega                | shirley.gutierrez@gmail.com       |            | 236-45      | 2-2026  | AUX    | ACTIVO   |
+| 69  | 29401      | Mauro Boris                     | Gutierrez Primintela            | mauro.gutierrez@gmail.com         |            | 236-41      | 2-2026  | AUX    | ACTIVO   |
+| 70  | 29528      | Gabriel Andres                  | Lopez Franco                    | gabriel.lopez@gmail.com           |            | 236-43      | 2-2026  | AUX    | ACTIVO   |
+| 71  | 29402      | Axel Alexander                  | Mamani Quispia                  | axel.mamani@gmail.com             |            | 236-41      | 2-2026  | AUX    | ACTIVO   |
+| 72  | 26279      | Gabriel                         | Mariscal Montenegro             | gabriel.mariscal@gmail.com        |            | 236-36      | 2-2026  | AUX    | ACTIVO   |
+| 73  | 28081      | Nataly Vanessa                  | Martinez Martinez               | nataly.martinez@gmail.com         |            | 236-44      | 2-2026  | AUX    | ACTIVO   |
+| 74  | 29532      | Freddy Andre                    | Padilla Mina                    | freddy.padilla@gmail.com          |            | 236-43      | 2-2026  | AUX    | ACTIVO   |
+| 75  | 29535      | Matias Franco                   | Ramos Limachi                   | matias.ramos@gmail.com            |            | 236-41      | 2-2026  | AUX    | ACTIVO   |
+| 76  | 26693      | Alicia                          | Rivas Romana                    | alicia.rivas@gmail.com            |            | 236-45      | 2-2026  | AUX    | ACTIVO   |
+| 77  | 29530      | Carlos                          | Rivero Ardaya                   | carlos.rivero@gmail.com           |            | 236-46      | 2-2026  | AUX    | ACTIVO   |
+| 78  | 29403      | Jorge Leonel                    | Rojas Farell                    | jorge.rojas@gmail.com             |            | 236-44      | 2-2026  | AUX    | ACTIVO   |
+| 79  | 29404      | Rafael                          | Salvatierra Valle               | rafael.salvatierra@gmail.com      |            | 236-43      | 2-2026  | AUX    | ACTIVO   |
+| 80  | 29405      | Jairo                           | Sanabria Ortega                 | elmaestrojairo26@gmail.com        | 68835550   | 236-43      | 2-2026  | AUX    | ACTIVO   |
+| 81  | 28217      | Gonzalo                         | Tarqui Ignacio                  | gonzalo.tarqui@gmail.com          |            | 236-36      | 2-2026  | AUX    | ACTIVO   |
+| 82  | 28087      | Gilmer Luis                     | Torrico Maquera                 | gilmer.torrico@gmail.com          |            | 236-45      | 2-2026  | AUX    | ACTIVO   |
+| 83  | 29406      | Arnulfo                         | Velasquez Paz                   | arnulfo.velasquez@gmail.com       |            | 236-46      | 2-2026  | AUX    | ACTIVO   |
+| 84  | 29531      | Nicolas Junior                  | Verduguez Teran                 | nicolas.verduguez@gmail.com       |            | 236-41      | 2-2026  | AUX    | ACTIVO   |
+| 85  | 26700      | Diego Rodrigo                   | Ybarra Velasquez                | diego.ybarra@gmail.com            |            | 236-41      | 2-2026  | AUX    | ACTIVO   |
+| 86  | 26150      | Edmundo Junior                  | Zenteno Rojas                   | edmundo.zenteno@gmail.com         |            | 236-45      | 2-2026  | AUX    | ACTIVO   |
++-----+------------+---------------------------------+---------------------------------+-----------------------------------+------------+-------------+---------+--------+----------+
+Total de usuarios registrados en el sistema: 131
+
+--------------------------------------------------------------------------------
+4. SCRIPT SQL COMPLETO (DDL Y DML)
+--------------------------------------------------------------------------------
+-- SCRIPT DDL: CREACION DE TABLAS (CU1)
+CREATE TABLE rol (
+  id          SERIAL PRIMARY KEY,
+  codigo      VARCHAR(3)  NOT NULL UNIQUE,
+  nombre      VARCHAR(50) NOT NULL,
+  descripcion VARCHAR(200)
+);
+
+CREATE TABLE comando (
+  id          SERIAL PRIMARY KEY,
+  nombre      VARCHAR(10)  NOT NULL UNIQUE,
+  descripcion VARCHAR(200) NOT NULL
+);
+
+CREATE TABLE rol_comando (
+  rol_id     INT NOT NULL REFERENCES rol(id),
+  comando_id INT NOT NULL REFERENCES comando(id),
+  PRIMARY KEY (rol_id, comando_id)
+);
+
+CREATE TABLE usuario (
+  id        SERIAL PRIMARY KEY,
+  codigo    VARCHAR(20)  NOT NULL UNIQUE,
+  nombre    VARCHAR(60)  NOT NULL,
+  apellido  VARCHAR(60)  NOT NULL,
+  correo    VARCHAR(100) NOT NULL UNIQUE,
+  telefono  VARCHAR(20),
+  cargo     VARCHAR(60),
+  aula      VARCHAR(20),
+  gestion   VARCHAR(10),
+  rol_id    INT NOT NULL REFERENCES rol(id),
+  estado    VARCHAR(10) NOT NULL DEFAULT 'ACTIVO'
+            CHECK (estado IN ('ACTIVO','INACTIVO')),
+  creado_en TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- SCRIPT DML: INSERTS DE ROLES
+INSERT INTO rol (codigo, nombre, descripcion) VALUES
+  ('ENC', 'Encargado de Laboratorios', 'Administrador general del sistema y los laboratorios'),
+  ('DOC', 'Docente', 'Profesor que solicita reservas de laboratorio'),
+  ('AUX', 'Auxiliar de Laboratorio', 'Auxiliar encargado de turnos y reporte de objetos/fallas'),
+  ('DIR', 'Dirección / Decanato', 'Autoridades académicas con acceso de consulta y reportes');
+
+-- SCRIPT DML: INSERTS DE USUARIOS (DATOS REALES DEL CU1)
+INSERT INTO usuario (codigo, nombre, apellido, correo, telefono, cargo, aula, gestion, rol_id, estado) VALUES
+  ('222058730', 'Oliver', 'Ventura Valverde', 'venturavalverdeo@gmail.com', NULL, NULL, NULL, NULL, 1, 'ACTIVO'),
+  ('222009845', 'Jairo', 'Sanabria Ortega', 'sanabriajairo26@gmail.com', '68835550', NULL, NULL, NULL, 1, 'ACTIVO'),
+  ('01', 'Luis Enrique', 'Higuera Huanca', 'encargado.lab236@gmail.com', '77323126', NULL, NULL, NULL, 1, 'ACTIVO'),
+  ('215049616', 'Carlos Alfonso', 'Salazar Alcocer', 'salazaralcocercarlos97@gmail.com', '70000000', NULL, NULL, NULL, 1, 'ACTIVO'),
+  ('D01', 'MIGUEL JESUS', 'PEINADO PEREIRA', 'mpeinado@gmail.com', '70002623', 'DECANO', NULL, NULL, 4, 'ACTIVO'),
+  ('D02', 'MAURICIO CHRISTI', 'CABALLERO RUA', 'mcaballero@gmail.com', '70008160', NULL, NULL, NULL, 4, 'ACTIVO'),
+  ('186', 'VICTOR HUGO', 'ORTIZ ARTEAGA', 'vortiz@gmail.com', '70000186', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('599', 'JUAN MANUEL', 'CHAHIN AVICHACRA', 'jchahin@gmail.com', '70000599', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('603', 'SANCHEZ DE MANCILLA PI', 'DAVALOS', 'sdavalos@gmail.com', '70000603', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('625', 'RICARDO', 'ZUNA VILLAGOMEZ', 'rzuna@gmail.com', '70000625', 'PROFESOR TITULAR C', NULL, NULL, 2, 'ACTIVO'),
+  ('652', 'JULIO MARTIN', 'CORTEZ UZEDA', 'jcortez@gmail.com', '70000652', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('670', 'FELIX', 'SILES MUÑOZ', 'fsiles@gmail.com', '70000670', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('676', 'CORRADO', 'VALLET VALLET', 'cvallet@gmail.com', '70000676', 'PROFESOR EMERITO', NULL, NULL, 2, 'ACTIVO'),
+  ('682', 'DANIEL LUIS', 'ZEBALLOS PAREDES', 'dzeballos@gmail.com', '70000682', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('702', 'BRAULIO', 'CACERES CHACON', 'bcaceres@gmail.com', '70000702', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('862', 'EDWIN', 'VARGAS YAPURA', 'evargas@gmail.com', '70000862', 'PROFESOR EMERITO', NULL, NULL, 2, 'ACTIVO'),
+  ('887', 'MARCOS OSCAR', 'FLORES FLORES', 'mflores@gmail.com', '70000887', 'PROFESOR EMERITO IND', NULL, NULL, 2, 'ACTIVO'),
+  ('990', 'ENRIQUE', 'MORENO SUAREZ', 'emoreno@gmail.com', '70000990', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('1031', 'VICTOR FERNANDO', 'MONRROY DIPP', 'vmonrroy@gmail.com', '70001031', 'PROFESOR TITULAR C', NULL, NULL, 2, 'ACTIVO'),
+  ('1033', 'NANCY', 'ABARCA SOTA', 'nabarca@gmail.com', '70001033', 'PROFESOR TITULAR C', NULL, NULL, 2, 'ACTIVO'),
+  ('1035', 'JULIO', 'TEJERINA GUERRA', 'jtejerina@gmail.com', '70001035', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('1040', 'JORGE', 'CHAU WONG', 'jchau@gmail.com', '70001040', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('1061', 'EDUARDO', 'GIANELLA PEREDO', 'egianella@gmail.com', '70001061', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('1250', 'CARLOS', 'MIRANDA CARRASCO', 'cmiranda@gmail.com', '70001250', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('1251', 'ENRIQUE', 'SANCHEZ VELASCO', 'esanchez@gmail.com', '70001251', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('1263', 'ANGEL', 'VELASCO GUAMAN', 'avelasco@gmail.com', '70001263', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('1265', 'JULIO', 'ZUNA VILLAGOMEZ', 'jzuna@gmail.com', '70001265', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('1395', 'BERTHY RONALD', 'DURAN CESPEDES', 'bduran@gmail.com', '70001395', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('1396', 'SAUL', 'SEVERICHE TOLEDO', 'sseveriche@gmail.com', '70001396', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('1642', 'ALBERTO', 'MOLLO MAMANI', 'amollo@gmail.com', '70001642', 'PROFESOR EMERITO', NULL, NULL, 2, 'ACTIVO'),
+  ('1683', 'JOSE SAID', 'HINOJOSA SAAVEDRA', 'jhinojosa@gmail.com', '70001683', 'PROFESOR TITULAR B', NULL, NULL, 2, 'ACTIVO'),
+  ('1719', 'IVAN VLADISHLAV', 'SELAYA GARVIZU', 'iselaya@gmail.com', '70001719', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('1805', 'CIRO EDGAR', 'VARGAS CASTILLO', 'cvargas@gmail.com', '70001805', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('1839', 'MAGALY', 'MORALES MENDEZ', 'mmorales@gmail.com', '70001839', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('1872', 'RUFINO WILBERTO', 'ROMAN ROCA', 'rroman@gmail.com', '70001872', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('2006', 'DE OROPEZA ELIZ', 'CLAURE MEDRANO', 'dclaure@gmail.com', '70002006', 'PROFESOR TITULAR B', NULL, NULL, 2, 'ACTIVO'),
+  ('2204', 'JOSUE OBED', 'VEIZAGA GONZALES', 'jveizaga@gmail.com', '70002204', 'PROFESOR TITULAR B', NULL, NULL, 2, 'ACTIVO'),
+  ('2205', 'GINO', 'BARROSO VIRUEZ', 'gbarroso@gmail.com', '70002205', 'PROFESOR TITULAR B', NULL, NULL, 2, 'ACTIVO'),
+  ('2351', 'EUDAL', 'AVENDAÑO GONZALES', 'eavendaño@gmail.com', '70002351', 'PROFESOR TITULAR B', NULL, NULL, 2, 'ACTIVO'),
+  ('2384', 'VICTOR MILTON', 'CAYOJA LUCANA', 'vcayoja@gmail.com', '70002384', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('2399', 'MARIO WILSON', 'GRAGEDA ESCUDERO', 'mgrageda@gmail.com', '70002399', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('2453', 'RICARDO', 'TERRAZAS SOTO', 'rterrazas@gmail.com', '70002453', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('2459', 'FREDDY MIGUEL', 'OQUENDO HEREDIA', 'foquendo@gmail.com', '70002459', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('2624', 'UBALDO', 'PEREZ FERREIRA', 'uperez@gmail.com', '70002624', 'PROFESOR ADJUNTO', NULL, NULL, 2, 'ACTIVO'),
+  ('2626', 'ROLANDO ANTONI', 'MARTINEZ CANEDO', 'rmartinez@gmail.com', '70002626', 'PROFESOR TITULAR B', NULL, NULL, 2, 'ACTIVO'),
+  ('2696', 'JORGE ANTONI', 'GONZALES SANDOVAL', 'jgonzales@gmail.com', '70002696', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('2717', 'JORGE', 'CANO CESPEDES', 'jcano@gmail.com', '70002717', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('2838', 'LUIS PERCY', 'TAPIA FLORES', 'ltapia@gmail.com', '70002838', 'PROFESOR TITULAR C', NULL, NULL, 2, 'ACTIVO'),
+  ('2848', 'JUAN CARLOS', 'CONTRERAS VILLEGAS', 'jcontreras@gmail.com', '70002848', 'PROFESOR TITULAR C', NULL, NULL, 2, 'ACTIVO'),
+  ('3096', 'DOMINGO', 'AGUILAR MARTINEZ', 'daguilar@gmail.com', '70003096', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('3146', 'IRMA ISABEL', 'ARGOTE CLAROS', 'iargote@gmail.com', '70003146', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('3334', 'ANGELICA', 'GARZON CUELLAR', 'agarzon@gmail.com', '70003334', 'PROFESOR TITULAR C', NULL, NULL, 2, 'ACTIVO'),
+  ('3768', 'EVANS', 'BALCAZAR VEIZAGA', 'ebalcazar@gmail.com', '70003768', 'PROFESOR TITULAR B', NULL, NULL, 2, 'ACTIVO'),
+  ('3786', 'MARCIO', 'CARVAJAL CORDERO', 'mcarvajal@gmail.com', '70003786', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('3955', 'RUBEN', 'OROSCO GOMEZ', 'rorosco@gmail.com', '70003955', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('4047', 'CESPEDES ROBERTO CA', 'VACA PINTO', 'cvaca@gmail.com', '70004047', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('4122', 'EIDY MARIA', 'SCHMITTER SCHMITTER', 'eschmitter@gmail.com', '70004122', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('4165', 'CARMEN LILIA', 'JUSTINIANO FLORES', 'cjustiniano@gmail.com', '70004165', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('4167', 'VICTOR HUGO', 'LOBO LIMPIAS', 'vlobo@gmail.com', '70004167', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('4220', 'MARIO MILTON', 'LOPEZ WINNIPEG', 'mlopezw@gmail.com', '70004220', 'PROFESOR TITULAR C', NULL, NULL, 2, 'ACTIVO'),
+  ('4221', 'MARY DUNNIA', 'LOPEZ NEGRETTY', 'mlopez@gmail.com', '70004221', 'PROFESOR TITULAR B', NULL, NULL, 2, 'ACTIVO'),
+  ('4356', 'SARAH MIRNA', 'MARTINEZ CARDONA', 'smartinez@gmail.com', '70004356', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('4357', 'CARLOS ROBERTO', 'LAZO ARTEAGA', 'clazo@gmail.com', '70004357', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('4594', 'BARTOLO JAVIER', 'ACOSTA CABEZAS', 'bacosta@gmail.com', '70004594', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('4606', 'EDGAR ZACA', 'RISSIOTTI VELASQUEZ', 'erissiotti@gmail.com', '70004606', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('4616', 'MODESTO FRANKL', 'CALDERON FLORES', 'mcalderon@gmail.com', '70004616', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('4619', 'JUAN RUBEN', 'CABELLO MERIDA', 'jcabello@gmail.com', '70004619', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('4672', 'JHONNY DAVID', 'ATILA LIJERON', 'jatila@gmail.com', '70004672', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('4806', 'KATIME ESTHER', 'GUTIERREZ BRUNO', 'kgutierrez@gmail.com', '70004806', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('5148', 'TOMAS', 'VALDELOMAR ORELLANA', 'tvaldelomar@gmail.com', '70005148', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('5153', 'ROBERTO CARLOS', 'PAZ MENDOZA', 'rpaz@gmail.com', '70005153', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('5154', 'GLORIA', 'TORREZ DOMINGUEZ', 'gtorrez@gmail.com', '70005154', 'PROFESOR TITULAR A', NULL, NULL, 2, 'ACTIVO'),
+  ('5243', 'MARIO', 'CAMPOS BARRERA', 'mcampos@gmail.com', '70005243', 'PROFESOR TITULAR B', NULL, NULL, 2, 'ACTIVO'),
+  ('5248', 'SHARON KENNY', 'ALIAGA HOWARD', 'saliaga@gmail.com', '70005248', 'PROFESOR TITULAR B', NULL, NULL, 2, 'ACTIVO'),
+  ('5254', 'MARCOS RODRIGO', 'LAMAS RODRIGUEZ', 'mlamas@gmail.com', '70005254', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('5318', 'MELBY', 'SUAREZ CESPEDES', 'msuarez@gmail.com', '70005318', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('5782', 'VALENTIN VICTOR', 'FLORES GUZMAN', 'vflores@gmail.com', '70005782', 'PROFESOR TITULAR B', NULL, NULL, 2, 'ACTIVO'),
+  ('5903', 'JUAN CARLOS', 'PEINADO PEREIRA', 'jpeinado@gmail.com', '70005903', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('5933', 'JHONNY', 'CASTRO MARISCAL', 'jcastro@gmail.com', '70005933', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('5937', 'MAURO', 'CABRERA PEÑA', 'mcabrera@gmail.com', '70005937', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('6171', 'SHIRLEY EULAL', 'PEREZ DELGADILLO', 'sperez@gmail.com', '70006171', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('6521', 'EDWIN', 'CALLE TERRAZAS', 'ecalle@gmail.com', '70006521', 'PROFESOR TITULAR B', NULL, NULL, 2, 'ACTIVO'),
+  ('6532', 'MAGNO EDWIN', 'CALIZAYA AJHUACHO', 'mcalizaya@gmail.com', '70006532', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('7213', 'JOSE JUNIOR', 'VILLAGOMEZ MELGAR', 'jvillagomez@gmail.com', '70007213', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('7214', 'LEONARDO', 'VARGAS PEÑA', 'lvargas@gmail.com', '70007214', 'PROFESOR TITULAR A', NULL, NULL, 2, 'ACTIVO'),
+  ('7407', 'SEBASTIAN', 'LAZO QUISPE', 'slazo@gmail.com', '70007407', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('7610', 'RONALD', 'JUSTINIANO ROCA', 'rjustiniano@gmail.com', '70007610', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('7611', 'MIGUEL ANGEL', 'GUTHRIE PACHECO', 'mguthrie@gmail.com', '70007611', 'PROFESOR ADJUNTO', NULL, NULL, 2, 'ACTIVO'),
+  ('8636', 'EVELYN VANESA', 'SORIA AVILA', 'esoria@gmail.com', '70008636', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('8651', 'JORGE MARCELO', 'ROSALES FUENTES', 'jrosales@gmail.com', '70008651', 'PROFESOR TITULAR A', NULL, NULL, 2, 'ACTIVO'),
+  ('8750', 'JONATHAN FELIX', 'GUARACHI SOLANO', 'jguarachi@gmail.com', '70008750', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('8784', 'ANDRES', 'CARRENO PEREIRA', 'acarreno@gmail.com', '70008784', 'PROFESOR ADJUNTO', NULL, NULL, 2, 'ACTIVO'),
+  ('8879', 'LUZ DIANA', 'TORREZ CAMACHO', 'ltorrez@gmail.com', '70008879', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('9416', 'ROLANDO', 'SALVATIERRA MERCADO', 'rsalvatierra@gmail.com', '70009416', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('9494', 'GUSTAVO ADOLFO', 'OROPEZA CLAURE', 'goropeza@gmail.com', '70009494', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('9554', 'EDWIN ALEJANDRO', 'SANCHEZ RIOJA', 'esanchezr@gmail.com', '70009554', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('9555', 'PAUL FERNANDO', 'GRIMALDO BRAVO', 'pgrimaldo@gmail.com', '70009555', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('9556', 'GERMAN FERNANDO', 'MARQUEZ PARADA', 'gmarquez@gmail.com', '70009556', 'PROFESOR INTERINO MAT', NULL, NULL, 2, 'ACTIVO'),
+  ('9557', 'GERMAN', 'ALPIRE RIVERO', 'galpire@gmail.com', '70009557', 'PROFESOR INTERINO', NULL, NULL, 2, 'ACTIVO'),
+  ('9801', 'ARIEL', 'VEGA', 'avega@gmail.com', '70009801', NULL, NULL, NULL, 2, 'ACTIVO'),
+  ('29395', 'Carlos Leonel', 'Barrios Mayorga', 'carlos.barrios@gmail.com', NULL, NULL, '236-41', '2-2026', 3, 'ACTIVO'),
+  ('29396', 'Cesar Alejandro', 'Caballero Caballero', 'cesar.caballero@gmail.com', NULL, NULL, '236-41', '2-2026', 3, 'ACTIVO'),
+  ('29397', 'Christian Alexander', 'Carrion Ojeda', 'christian.carrion@gmail.com', NULL, NULL, '236-41', '2-2026', 3, 'ACTIVO'),
+  ('28204', 'Eliezer', 'Chavez Salas', 'eliezer.chavez@gmail.com', NULL, NULL, '236-36', '2-2026', 3, 'ACTIVO'),
+  ('28207', 'Benjamin', 'Condori Vasquez', 'benjamin.condori@gmail.com', NULL, NULL, '236-41', '2-2026', 3, 'ACTIVO'),
+  ('29398', 'Fernando Daniel', 'Cossio Aranda', 'fernando.cossio@gmail.com', NULL, NULL, '236-43', '2-2026', 3, 'ACTIVO'),
+  ('28210', 'Juliano Rodrigo', 'Eguez Montero', 'juliano.eguez@gmail.com', NULL, NULL, '123-03', '2-2026', 3, 'ACTIVO'),
+  ('29399', 'Raul', 'Farell Vaca', 'raul.farell@gmail.com', NULL, NULL, '236-43', '2-2026', 3, 'ACTIVO'),
+  ('29400', 'Luis Miguel', 'Fernandez Beltran', 'luis.fernandez@gmail.com', NULL, NULL, '123-03', '2-2026', 3, 'ACTIVO'),
+  ('29534', 'Jose Carlo', 'Fernandez Rodas', 'jose.fernandez@gmail.com', NULL, NULL, '236-44', '2-2026', 3, 'ACTIVO'),
+  ('29529', 'Camila Adriana', 'Galviz Aramayo', 'camila.galviz@gmail.com', NULL, NULL, '236-43', '2-2026', 3, 'ACTIVO'),
+  ('29533', 'Jose Carlos', 'Giron Solano', 'jose.giron@gmail.com', NULL, NULL, '236-41', '2-2026', 3, 'ACTIVO'),
+  ('24307', 'Shirley Angie', 'Gutierrez Ortega', 'shirley.gutierrez@gmail.com', NULL, NULL, '236-45', '2-2026', 3, 'ACTIVO'),
+  ('29401', 'Mauro Boris', 'Gutierrez Primintela', 'mauro.gutierrez@gmail.com', NULL, NULL, '236-41', '2-2026', 3, 'ACTIVO'),
+  ('29528', 'Gabriel Andres', 'Lopez Franco', 'gabriel.lopez@gmail.com', NULL, NULL, '236-43', '2-2026', 3, 'ACTIVO'),
+  ('29402', 'Axel Alexander', 'Mamani Quispia', 'axel.mamani@gmail.com', NULL, NULL, '236-41', '2-2026', 3, 'ACTIVO'),
+  ('26279', 'Gabriel', 'Mariscal Montenegro', 'gabriel.mariscal@gmail.com', NULL, NULL, '236-36', '2-2026', 3, 'ACTIVO'),
+  ('28081', 'Nataly Vanessa', 'Martinez Martinez', 'nataly.martinez@gmail.com', NULL, NULL, '236-44', '2-2026', 3, 'ACTIVO'),
+  ('29532', 'Freddy Andre', 'Padilla Mina', 'freddy.padilla@gmail.com', NULL, NULL, '236-43', '2-2026', 3, 'ACTIVO'),
+  ('29535', 'Matias Franco', 'Ramos Limachi', 'matias.ramos@gmail.com', NULL, NULL, '236-41', '2-2026', 3, 'ACTIVO'),
+  ('26693', 'Alicia', 'Rivas Romana', 'alicia.rivas@gmail.com', NULL, NULL, '236-45', '2-2026', 3, 'ACTIVO'),
+  ('29530', 'Carlos', 'Rivero Ardaya', 'carlos.rivero@gmail.com', NULL, NULL, '236-46', '2-2026', 3, 'ACTIVO'),
+  ('29403', 'Jorge Leonel', 'Rojas Farell', 'jorge.rojas@gmail.com', NULL, NULL, '236-44', '2-2026', 3, 'ACTIVO'),
+  ('29404', 'Rafael', 'Salvatierra Valle', 'rafael.salvatierra@gmail.com', NULL, NULL, '236-43', '2-2026', 3, 'ACTIVO'),
+  ('29405', 'Jairo', 'Sanabria Ortega', 'elmaestrojairo26@gmail.com', '68835550', NULL, '236-43', '2-2026', 3, 'ACTIVO'),
+  ('28217', 'Gonzalo', 'Tarqui Ignacio', 'gonzalo.tarqui@gmail.com', NULL, NULL, '236-36', '2-2026', 3, 'ACTIVO'),
+  ('28087', 'Gilmer Luis', 'Torrico Maquera', 'gilmer.torrico@gmail.com', NULL, NULL, '236-45', '2-2026', 3, 'ACTIVO'),
+  ('29406', 'Arnulfo', 'Velasquez Paz', 'arnulfo.velasquez@gmail.com', NULL, NULL, '236-46', '2-2026', 3, 'ACTIVO'),
+  ('29531', 'Nicolas Junior', 'Verduguez Teran', 'nicolas.verduguez@gmail.com', NULL, NULL, '236-41', '2-2026', 3, 'ACTIVO'),
+  ('26700', 'Diego Rodrigo', 'Ybarra Velasquez', 'diego.ybarra@gmail.com', NULL, NULL, '236-41', '2-2026', 3, 'ACTIVO'),
+  ('26150', 'Edmundo Junior', 'Zenteno Rojas', 'edmundo.zenteno@gmail.com', NULL, NULL, '236-45', '2-2026', 3, 'ACTIVO');
+
