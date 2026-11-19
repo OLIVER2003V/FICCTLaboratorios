@@ -50,12 +50,12 @@ public class ProcesadorCorreo {
         while (true) {
             try {
                 revisarBuzon();
-            } catch (Exception e) {
+            } catch (Throwable e) {
                 log("No se pudo revisar el buzón: " + e.getMessage());
             }
             try {
                 gestor.ejecutarTareasProgramadas();
-            } catch (Exception e) {
+            } catch (Throwable e) {
                 log("Error en tareas automáticas: " + e.getMessage());
             }
             try {
@@ -76,7 +76,7 @@ public class ProcesadorCorreo {
                 CorreoEntrante correo = CorreoEntrante.desde(pop3.leerMensaje(i));
                 try {
                     procesar(correo);
-                } catch (RuntimeException e) {
+                } catch (Throwable e) {
                     log("Error inesperado con el mensaje " + i + ": " + e);
                 }
                 // Se elimina siempre, para no volver a procesar (ni responder) el mismo correo
