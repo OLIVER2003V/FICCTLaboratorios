@@ -1,0 +1,818 @@
+================================================================================
+          SISTEMA DE GESTION DE LABORATORIOS FICCT - GRUPO 08 SA
+ CASO DE USO 6 (CU6): GESTION DE INVENTARIO, INCIDENCIAS, OBJETOS ENCONTRADOS Y RED
+================================================================================
+
+--------------------------------------------------------------------------------
+1. DISENO LOGICO (MODELO CONCEPTUAL / RELACIONAL)
+--------------------------------------------------------------------------------
+El modulo de Inventario, Incidencias, Objetos Encontrados y Red (CU6) administra
+el control fisico y logico de todos los activos tecnologicos (computadoras, proyectores,
+perifericos, componentes) en los 9 laboratorios de la facultad, la asignacion de parametros
+de red estatica por estacion de trabajo, el ciclo de vida de incidencias tecnicas y la
+custodia formal de objetos extraviados y devueltos a la comunidad universitaria.
+
+A. ENTIDADES Y DEFINICION LOGICA:
+  * EQUIPO (id, activo, codigo, laboratorio_id, tipo, descripcion, estado)
+    Representa el activo fisico o logico inventariado en un laboratorio determinado.
+    Valores de tipo: COMPUTADORA, PROYECTOR, COMPONENTE, SOFTWARE, OTRO.
+    Valores de estado: OPERATIVO, EN_REPARACION, BAJA.
+
+  * EQUIPO_RED (id, equipo_id, ip, mascara, gateway, dns1, dns2, proxy, grupo_red)
+    Configuracion de red local TCP/IP asignada a una estacion de trabajo o equipo activo.
+    Mantiene relacion 1 a 1 exclusiva con el equipo correspondiente.
+
+  * INCIDENCIA (id, equipo_id, reportado_por, descripcion, estado, solucion, fecha_reporte, fecha_solucion)
+    Falla de hardware, software o conectividad reportada sobre un equipo especifico.
+    Valores de estado: PENDIENTE, EN_ATENCION, RESUELTA.
+
+  * OBJETO_ENCONTRADO (id, laboratorio_id, descripcion, fecha_hallazgo, registrado_por, estado, entregado_a, ci_receptor, fecha_entrega)
+    Pertenencia u objeto personal extraviado en laboratorios y dejado bajo custodia del auxiliar.
+    Valores de estado: EN_CUSTODIA, ENTREGADO.
+
+B. RELACIONES Y CARDINALIDADES:
+  * LABORATORIO (1) ──── (N) EQUIPO
+    Cada equipo esta fisicamente ubicado y catalogado en un laboratorio ('laboratorio_id').
+  * EQUIPO (1) ──── (0..1) EQUIPO_RED
+    Relacion 1 a 1: Cada registro de red pertenece de forma unica a un equipo ('equipo_id').
+    Si el equipo es eliminado, su configuracion de red se borra en cascada (ON DELETE CASCADE).
+  * EQUIPO (1) ──── (N) INCIDENCIA
+    Un equipo puede tener un historial cronologico de fallas tecnicas registradas ('equipo_id').
+  * USUARIO (1) ──── (N) INCIDENCIA
+    El usuario (docente, auxiliar o encargado) que realiza el reporte de la falla ('reportado_por').
+  * LABORATORIO (1) ──── (N) OBJETO_ENCONTRADO
+    El laboratorio fisico donde se encontro el objeto extraviado ('laboratorio_id').
+  * USUARIO [AUXILIAR / ENCARGADO] (1) ──── (N) OBJETO_ENCONTRADO
+    El auxiliar de turno que recibe y registra la custodia inicial ('registrado_por').
+
+C. REGLAS DE NEGOCIO E INTEGRIDAD:
+  1. Unicidad de Codigo y Activo Fijo: El codigo interno del equipo debe ser unico en el sistema (UNIQUE).
+  2. Segmentacion de Red: La IP asignada a cada equipo debe ser unica dentro de la red facultativa.
+  3. Flujo de Incidencias: PENDIENTE -> EN_ATENCION -> RESUELTA. Al resolverse la incidencia, es obligatorio
+     ingresar el detalle de la solucion tecnica aplicada y se sella automaticamente la fecha de solucion.
+  4. Cadena de Custodia: El objeto encontrado permanece en estado 'EN_CUSTODIA' hasta que el propietario
+     acredita pertenencia. Al devolverse, pasa a 'ENTREGADO' registrando obligatoriamente nombre,
+     CI del receptor y la fecha/hora exacta de la entrega.
+  5. Notificacion Automatica: Cuando se reporta una incidencia de estado PENDIENTE, el sistema notifica
+     inmediatamente al Encargado del Laboratorio para su asignacion y atencion tecnica.
+
+--------------------------------------------------------------------------------
+2. DISENO FISICO (DICCIONARIO DE DATOS EN POSTGRESQL)
+--------------------------------------------------------------------------------
+
+TABLA: equipo
++----------------+--------------+----------+---------------------------------------------------+
+| Columna        | Tipo         | Nulo     | Descripcion / Observacion                         |
++----------------+--------------+----------+---------------------------------------------------+
+| id             | INTEGER      | NOT NULL | Clave primaria ( SERIAL )                         |
+| activo         | VARCHAR(30)  | Nulo     | Codigo de activo fijo institucional (ej. ACT-001) |
+| codigo         | VARCHAR(50)  | NOT NULL | Identificador unico de estacion (ej. PC-LAB41-01) |
+| laboratorio_id | INTEGER      | NOT NULL | Clave foranea referencia a laboratorio(id)        |
+| tipo           | VARCHAR(50)  | NOT NULL | COMPUTADORA, PROYECTOR, COMPONENTE, SOFTWARE, OTRO|
+| descripcion    | VARCHAR(200) | NOT NULL | Caracteristicas tecnicas, marca, modelo o detalle |
+| estado         | VARCHAR(15)  | NOT NULL | OPERATIVO, EN_REPARACION, BAJA                    |
++----------------+--------------+----------+---------------------------------------------------+
+
+TABLA: equipo_red
++----------------+--------------+----------+---------------------------------------------------+
+| Columna        | Tipo         | Nulo     | Descripcion / Observacion                         |
++----------------+--------------+----------+---------------------------------------------------+
+| id             | INTEGER      | NOT NULL | Clave primaria ( SERIAL )                         |
+| equipo_id      | INTEGER      | NOT NULL | Clave foranea UNIQUE referencia a equipo(id)      |
+| ip             | VARCHAR(45)  | NOT NULL | Direccion IP fija configurada en el equipo        |
+| mascara        | VARCHAR(15)  | NOT NULL | Mascara de subred (defecto: 255.255.255.0)        |
+| gateway        | VARCHAR(45)  | NOT NULL | Puerta de enlace (defecto: 172.20.172.254)        |
+| dns1           | VARCHAR(45)  | NOT NULL | Servidor DNS primario (defecto: 10.10.0.251)      |
+| dns2           | VARCHAR(45)  | NOT NULL | Servidor DNS secundario (defecto: 8.8.8.8)        |
+| proxy          | VARCHAR(45)  | NOT NULL | Servidor proxy HTTP (defecto: 172.20.172.254:3128)|
+| grupo_red      | VARCHAR(20)  | NOT NULL | Grupo de trabajo / VLAN (defecto: LAB41)          |
++----------------+--------------+----------+---------------------------------------------------+
+
+TABLA: incidencia
++----------------+--------------+----------+---------------------------------------------------+
+| Columna        | Tipo         | Nulo     | Descripcion / Observacion                         |
++----------------+--------------+----------+---------------------------------------------------+
+| id             | INTEGER      | NOT NULL | Clave primaria ( SERIAL )                         |
+| equipo_id      | INTEGER      | NOT NULL | Clave foranea referencia a equipo(id)             |
+| reportado_por  | INTEGER      | NOT NULL | Clave foranea referencia a usuario(id)            |
+| descripcion    | VARCHAR(300) | NOT NULL | Sintoma o descripcion detallada de la falla       |
+| estado         | VARCHAR(12)  | NOT NULL | PENDIENTE, EN_ATENCION, RESUELTA                  |
+| solucion       | VARCHAR(300) | Nulo     | Accion tecnica correctiva o solucion aplicada     |
+| fecha_reporte  | TIMESTAMP    | NOT NULL | Fecha y hora en que se registro la incidencia     |
+| fecha_solucion | TIMESTAMP    | Nulo     | Fecha y hora en que se concluyo la solucion       |
++----------------+--------------+----------+---------------------------------------------------+
+
+TABLA: objeto_encontrado
++----------------+--------------+----------+---------------------------------------------------+
+| Columna        | Tipo         | Nulo     | Descripcion / Observacion                         |
++----------------+--------------+----------+---------------------------------------------------+
+| id             | INTEGER      | NOT NULL | Clave primaria ( SERIAL )                         |
+| laboratorio_id | INTEGER      | NOT NULL | Clave foranea referencia a laboratorio(id)        |
+| descripcion    | VARCHAR(200) | NOT NULL | Descripcion fisica detallada del objeto           |
+| fecha_hallazgo | DATE         | NOT NULL | Fecha en que fue encontrado en el laboratorio     |
+| registrado_por | INTEGER      | NOT NULL | Clave foranea referencia a usuario(id) auxiliar   |
+| estado         | VARCHAR(12)  | NOT NULL | EN_CUSTODIA, ENTREGADO                            |
+| entregado_a    | VARCHAR(100) | Nulo     | Nombre completo de la persona que retira el objeto|
+| ci_receptor    | VARCHAR(15)  | Nulo     | Numero de cedula de identidad de quien retira     |
+| fecha_entrega  | TIMESTAMP    | Nulo     | Fecha y hora exacta de la entrega formal          |
++----------------+--------------+----------+---------------------------------------------------+
+
+--------------------------------------------------------------------------------
+3. TABLAS RELLENAS CON DATOS REALES DE LA BASE DE DATOS
+--------------------------------------------------------------------------------
+
+A. DATOS DE LA TABLA: equipo (Muestra de activos de computo y laboratorio)
++----+---------+----------------+---------+---------------+--------------------------------------------------+---------------+
+| id | lab     | codigo         | activo  | tipo          | descripcion                                      | estado        |
++----+---------+----------------+---------+---------------+--------------------------------------------------+---------------+
+| 202 | LAB-41  | U147111640682  | U147111640682 | OTRO          | MESA                                             | OPERATIVO     |
+| 203 | LAB-41  | U147111642098  | U147111642098 | OTRO          | MESA                                             | OPERATIVO     |
+| 204 | LAB-41  | U147111642099  | U147111642099 | OTRO          | MESA                                             | OPERATIVO     |
+| 205 | LAB-41  | U147111642100  | U147111642100 | OTRO          | MESA                                             | OPERATIVO     |
+| 206 | LAB-41  | U147111642101  | U147111642101 | OTRO          | MESA                                             | OPERATIVO     |
+| 207 | LAB-41  | U147111642102  | U147111642102 | OTRO          | MESA                                             | OPERATIVO     |
+| 208 | LAB-41  | U147111642103  | U147111642103 | OTRO          | MESA                                             | OPERATIVO     |
+| 209 | LAB-41  | U147111642104  | U147111642104 | OTRO          | MESA                                             | OPERATIVO     |
+| 210 | LAB-41  | U147111642105  | U147111642105 | OTRO          | MESA                                             | OPERATIVO     |
+| 211 | LAB-41  | U147111642106  | U147111642106 | OTRO          | MESA                                             | OPERATIVO     |
+| 212 | LAB-41  | U147111642107  | U147111642107 | OTRO          | MESA                                             | OPERATIVO     |
+| 213 | LAB-41  | U147111642108  | U147111642108 | OTRO          | MESA                                             | OPERATIVO     |
+| 214 | LAB-41  | U147111642109  | U147111642109 | OTRO          | MESA                                             | OPERATIVO     |
+| 215 | LAB-41  | U147111642110  | U147111642110 | OTRO          | MESA                                             | OPERATIVO     |
+| 216 | LAB-41  | U147111642111  | U147111642111 | OTRO          | MESA                                             | OPERATIVO     |
+| 217 | LAB-41  | U147111642112  | U147111642112 | OTRO          | MESA                                             | OPERATIVO     |
+| 218 | LAB-41  | U147111642113  | U147111642113 | OTRO          | MESA                                             | OPERATIVO     |
+| 219 | LAB-41  | U147111642114  | U147111642114 | OTRO          | MESA                                             | OPERATIVO     |
+| 220 | LAB-41  | U147111642115  | U147111642115 | OTRO          | MESA                                             | OPERATIVO     |
+| 221 | LAB-41  | U147111642116  | U147111642116 | OTRO          | MESA                                             | OPERATIVO     |
+| 222 | LAB-41  | U147111642117  | U147111642117 | OTRO          | MESA                                             | OPERATIVO     |
+| 223 | LAB-41  | U147111642118  | U147111642118 | OTRO          | MESA                                             | OPERATIVO     |
+| 224 | LAB-41  | U147111642119  | U147111642119 | OTRO          | MESA                                             | OPERATIVO     |
+| 225 | LAB-41  | U147111642120  | U147111642120 | OTRO          | MESA                                             | OPERATIVO     |
+| 226 | LAB-41  | U147112448703  | U147112448703 | OTRO          | SILLA                                            | OPERATIVO     |
+| 227 | LAB-41  | U147112448704  | U147112448704 | OTRO          | SILLA                                            | OPERATIVO     |
+| 228 | LAB-41  | U147112448705  | U147112448705 | OTRO          | SILLA                                            | OPERATIVO     |
+| 229 | LAB-41  | U147112448706  | U147112448706 | OTRO          | SILLA                                            | OPERATIVO     |
+| 230 | LAB-41  | U147112448707  | U147112448707 | OTRO          | SILLA                                            | OPERATIVO     |
+| 231 | LAB-41  | U147112448708  | U147112448708 | OTRO          | SILLA                                            | OPERATIVO     |
+| 232 | LAB-41  | U147112448709  | U147112448709 | OTRO          | SILLA                                            | OPERATIVO     |
+| 233 | LAB-41  | U147112448710  | U147112448710 | OTRO          | SILLA                                            | OPERATIVO     |
+| 234 | LAB-41  | U147112448711  | U147112448711 | OTRO          | SILLA                                            | OPERATIVO     |
+| 235 | LAB-41  | U147112448712  | U147112448712 | OTRO          | SILLA                                            | OPERATIVO     |
+| 236 | LAB-41  | U147112448713  | U147112448713 | OTRO          | SILLA                                            | OPERATIVO     |
+| 237 | LAB-41  | U147112448714  | U147112448714 | OTRO          | SILLA                                            | OPERATIVO     |
+| 238 | LAB-41  | U147112448715  | U147112448715 | OTRO          | SILLA                                            | OPERATIVO     |
+| 239 | LAB-41  | U147112448716  | U147112448716 | OTRO          | SILLA                                            | OPERATIVO     |
+| 240 | LAB-41  | U147112448717  | U147112448717 | OTRO          | SILLA                                            | OPERATIVO     |
+| 241 | LAB-41  | U147112448718  | U147112448718 | OTRO          | SILLA                                            | OPERATIVO     |
+| 242 | LAB-41  | U147112448719  | U147112448719 | OTRO          | SILLA                                            | OPERATIVO     |
+| 243 | LAB-41  | U147112448720  | U147112448720 | OTRO          | SILLA                                            | OPERATIVO     |
+| 244 | LAB-41  | U147112448721  | U147112448721 | OTRO          | SILLA                                            | OPERATIVO     |
+| 245 | LAB-41  | U147112448722  | U147112448722 | OTRO          | SILLA                                            | OPERATIVO     |
+| 246 | LAB-41  | U147112448723  | U147112448723 | OTRO          | SILLA                                            | OPERATIVO     |
+| 247 | LAB-41  | U147112448724  | U147112448724 | OTRO          | SILLA                                            | OPERATIVO     |
+| 248 | LAB-41  | U147112448725  | U147112448725 | OTRO          | SILLA                                            | OPERATIVO     |
+| 249 | LAB-41  | U147112448726  | U147112448726 | OTRO          | SILLA                                            | OPERATIVO     |
+| 250 | LAB-41  | U147112448727  | U147112448727 | OTRO          | SILLA                                            | OPERATIVO     |
+| 251 | LAB-41  | U147112448728  | U147112448728 | OTRO          | SILLA                                            | OPERATIVO     |
+| 252 | LAB-41  | U147112448729  | U147112448729 | OTRO          | SILLA                                            | OPERATIVO     |
+| 253 | LAB-41  | U147112448730  | U147112448730 | OTRO          | SILLA                                            | OPERATIVO     |
+| 254 | LAB-41  | U147112448731  | U147112448731 | OTRO          | SILLA                                            | OPERATIVO     |
+| 255 | LAB-41  | U147112448732  | U147112448732 | OTRO          | SILLA                                            | OPERATIVO     |
+| 256 | LAB-41  | U147112448733  | U147112448733 | OTRO          | SILLA                                            | OPERATIVO     |
+| 257 | LAB-41  | U147112448734  | U147112448734 | OTRO          | SILLA                                            | OPERATIVO     |
+| 258 | LAB-41  | U147112448735  | U147112448735 | OTRO          | SILLA                                            | OPERATIVO     |
+| 259 | LAB-41  | U147112448736  | U147112448736 | OTRO          | SILLA                                            | OPERATIVO     |
+| 260 | LAB-41  | U147112448737  | U147112448737 | OTRO          | SILLA                                            | OPERATIVO     |
+| 261 | LAB-41  | U147112448738  | U147112448738 | OTRO          | SILLA                                            | OPERATIVO     |
++----+---------+----------------+---------+---------------+--------------------------------------------------+---------------+
+  (Mostrando 60 de 1239 registros cargados en la base de datos)
+
+B. DATOS DE LA TABLA: equipo_red (Configuracion IP y parametros de red)
++----+----------------+---------------+-----------------+-----------------+-----------------+---------------+-----------+
+| id | equipo         | ip            | mascara         | gateway         | dns1            | dns2          | grupo_red |
++----+----------------+---------------+-----------------+-----------------+-----------------+---------------+-----------+
+| 202 | LAB-41, PC-DOC | 172.20.172.5  | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 203 | LAB-41, PC-01  | 172.20.172.184 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 204 | LAB-41, PC-02  | 172.20.172.185 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 205 | LAB-41, PC-03  | 172.20.172.186 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 206 | LAB-41, PC-04  | 172.20.172.187 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 207 | LAB-41, PC-05  | 172.20.172.188 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 208 | LAB-41, PC-06  | 172.20.172.189 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 209 | LAB-41, PC-07  | 172.20.172.190 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 210 | LAB-41, PC-08  | 172.20.172.191 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 211 | LAB-41, PC-09  | 172.20.172.192 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 212 | LAB-41, PC-10  | 172.20.172.193 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 213 | LAB-41, PC-11  | 172.20.172.194 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 214 | LAB-41, PC-12  | 172.20.172.195 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 215 | LAB-41, PC-13  | 172.20.172.196 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 216 | LAB-41, PC-14  | 172.20.172.197 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 217 | LAB-41, PC-15  | 172.20.172.198 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 218 | LAB-41, PC-16  | 172.20.172.199 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 219 | LAB-41, PC-17  | 172.20.172.200 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 220 | LAB-41, PC-18  | 172.20.172.201 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 221 | LAB-41, PC-19  | 172.20.172.202 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 222 | LAB-41, PC-20  | 172.20.172.203 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 223 | LAB-41, PC-21  | 172.20.172.204 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 224 | LAB-41, PC-22  | 172.20.172.205 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 225 | LAB-41, PC-23  | 172.20.172.206 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 226 | LAB-41, PC-24  | 172.20.172.207 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 227 | LAB-41, PC-25  | 172.20.172.208 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 228 | LAB-41, PC-26  | 172.20.172.209 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 229 | LAB-41, PC-27  | 172.20.172.210 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 230 | LAB-41, PC-28  | 172.20.172.211 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 231 | LAB-41, PC-29  | 172.20.172.212 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 232 | LAB-41, PC-30  | 172.20.172.213 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 233 | LAB-41, PC-31  | 172.20.172.214 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 234 | LAB-41, PC-32  | 172.20.172.215 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 235 | LAB-41, PC-33  | 172.20.172.216 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 236 | LAB-41, PC-34  | 172.20.172.217 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 237 | LAB-41, PC-35  | 172.20.172.218 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 238 | LAB-41, PC-36  | 172.20.172.219 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 239 | LAB-41, PC-37  | 172.20.172.220 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 240 | LAB-41, PC-38  | 172.20.172.221 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 241 | LAB-41, PC-39  | 172.20.172.222 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 242 | LAB-41, PC-40  | 172.20.172.223 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 243 | LAB-41, PC-41  | 172.20.172.224 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 244 | LAB-41, PC-42  | 172.20.172.225 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 245 | LAB-41, PC-43  | 172.20.172.226 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 246 | LAB-41, PC-44  | 172.20.172.227 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB41     |
+| 247 | LAB-42, PC-DOC | 172.20.173.2  | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB236-42 |
+| 248 | LAB-43, PC-DOC | 172.20.172.10 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB43     |
+| 249 | LAB-43, PC-01  | 172.20.172.138 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB43     |
+| 250 | LAB-43, PC-02  | 172.20.172.139 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB43     |
+| 251 | LAB-43, PC-03  | 172.20.172.140 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB43     |
+| 252 | LAB-43, PC-04  | 172.20.172.141 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB43     |
+| 253 | LAB-43, PC-05  | 172.20.172.142 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB43     |
+| 254 | LAB-43, PC-06  | 172.20.172.143 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB43     |
+| 255 | LAB-43, PC-07  | 172.20.172.144 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB43     |
+| 256 | LAB-43, PC-08  | 172.20.172.145 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB43     |
+| 257 | LAB-43, PC-09  | 172.20.172.146 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB43     |
+| 258 | LAB-43, PC-10  | 172.20.172.147 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB43     |
+| 259 | LAB-43, PC-11  | 172.20.172.148 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB43     |
+| 260 | LAB-43, PC-12  | 172.20.172.149 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB43     |
+| 261 | LAB-43, PC-13  | 172.20.172.150 | 255.255.255.0   | 172.20.172.254  | 10.10.0.251     | 8.8.8.8       | LAB43     |
++----+----------------+---------------+-----------------+-----------------+-----------------+---------------+-----------+
+  (Mostrando 60 de 180 registros de red cargados en la base de datos)
+
+C. DATOS DE LA TABLA: incidencia (Historial de desperfectos tecnicos y soluciones)
++----+----------------+-------------------------+-------------+---------------------+--------------------------------------------------------+--------------------------------------------------------+
+| id | equipo         | reportado_por           | estado      | fecha_reporte       | descripcion                                            | solucion                                               |
++----+----------------+-------------------------+-------------+---------------------+--------------------------------------------------------+--------------------------------------------------------+
+| 1  | LAB-41, PC-DOC | VICTOR HUGO ORTIZ AR... | RESUELTA    | 2026-11-05 08:08:07 | La PC no enciende luego de corte de energía eléctri... | Se sustituyó fuente de poder ATX de 500W dañada y s... |
+| 2  | U147124217322  | JUAN MANUEL CHAHIN A... | RESUELTA    | 2026-11-07 09:08:07 | La pantalla parpadea con líneas horizontales interm... | Se reemplazó cable de video VGA con pines doblados ... |
+| 3  | LAB-43, PC-01  | Carlos Leonel Barrio... | RESUELTA    | 2026-11-09 06:08:07 | Se reinicia súbitamente a los 10 minutos de uso con... | Se realizó limpieza profunda del cooler/disipador y... |
+| 4  | U141913440267  | SANCHEZ DE MANCILLA ... | EN_ATENCION | 2026-11-11 04:08:07 | Presenta pantalla azul (BSOD: MEMORY_MANAGEMENT) al... | En diagnóstico con MemTest86 en taller de soporte; ... |
+| 5  | U141913440265  | Cesar Alejandro Caba... | EN_ATENCION | 2026-11-12 10:08:07 | Estabilizador emite zumbido continuo muy fuerte y c... | Desconectado por seguridad; derivado al área técnic... |
+| 6  | LAB-45, PC-05  | RICARDO ZUNA VILLAGOMEZ | EN_ATENCION | 2026-11-13 07:08:07 | Error de inicio en BIOS: "Reboot and Select proper ... | Se verificaron cables SATA y de poder; pendiente cl... |
+| 7  | U133513431638  | JULIO MARTIN CORTEZ ... | RESUELTA    | 2026-11-10 10:08:07 | Los puertos USB frontales están dañados físicamente... | Se desconectó panel frontal roto y se instaló exten... |
+| 8  | U141913440225  | EDWIN VARGAS YAPURA     | RESUELTA    | 2026-11-12 02:08:07 | El teclado y mouse inalámbricos no responden o tien... | Se cambiaron baterías alcalinas AAA y se reubicó re... |
+| 9  | LAB-41, PC-08  | Christian Alexander ... | PENDIENTE   | 2026-11-14 05:08:07 | La PC enciende pero emite 3 pitidos cortos y no env... | -                                                      |
+| 10 | U141924212709  | CARLOS MIRANDA CARRASCO | PENDIENTE   | 2026-11-15 09:08:07 | El botón de encendido frontal del monitor está hund... | -                                                      |
+| 11 | LAB-45, PC-10  | Eliezer Chavez Salas    | RESUELTA    | 2026-11-13 05:08:07 | Conector de red RJ-45 roto en el extremo del patchc... | Se recrimpó nuevo conector RJ-45 categoría 6 con ca... |
+| 12 | LAB-46, PC-08  | ALBERTO MOLLO MAMANI    | EN_ATENCION | 2026-11-16 06:08:07 | Sistema operativo Fedora Linux no arranca tras actu... | Auxiliar de turno realizando recuperación de paquet... |
+| 13 | U141913440276  | Benjamin Condori Vas... | PENDIENTE   | 2026-11-16 10:08:07 | Ventilador posterior del gabinete produce ruido chi... | -                                                      |
+| 14 | U147111642110  | VICTOR HUGO ORTIZ AR... | PENDIENTE   | 2026-11-16 18:08:07 | El proyector muestra luz indicadora de "LAMP" en ro... | -                                                      |
+| 15 | U147124217051  | Fernando Daniel Coss... | RESUELTA    | 2026-11-14 08:08:07 | Monitor pierde el color azul, toda la imagen se vis... | Se reemplazó cable VGA defectuoso y se restablecier... |
+| 16 | LAB-45, PC-15  | Luis Enrique Higuera... | PENDIENTE   | 2026-11-17 06:08:07 | Teclas "Shift", "Espacio" y "Ctrl" no responden en ... | -                                                      |
+| 17 | LAB-41, PC-16  | JUAN MANUEL CHAHIN A... | RESUELTA    | 2026-11-11 09:08:07 | Tarjeta de red integrada no detecta cable de red; s... | Se instaló tarjeta de red PCIe Gigabit TP-Link y se... |
+| 18 | U141913440309  | Juliano Rodrigo Egue... | RESUELTA    | 2026-11-15 04:08:07 | Mouse óptico tiene la rueda de scroll trabada y el ... | Se entregó mouse óptico USB nuevo del stock de repu... |
++----+----------------+-------------------------+-------------+---------------------+--------------------------------------------------------+--------------------------------------------------------+
+
+D. DATOS DE LA TABLA: objeto_encontrado (Control de objetos extraviados y entregas)
++----+---------+------------+-------------+-------------------------+-----------------------------------+---------------------------+-------------+
+| id | lab     | hallazgo   | estado      | registrado_por          | descripcion                       | entregado_a               | ci_receptor |
++----+---------+------------+-------------+-------------------------+-----------------------------------+---------------------------+-------------+
+| 1  | LAB-41  | 2026-07-07 | EN_CUSTODIA | Luis Enrique Higuera... | Carnet de Micaela Huanca Rojas    | -                         | -           |
+| 2  | LAB-45  | 2026-07-07 | ENTREGADO   | Luis Enrique Higuera... | MousePad Negro                    | Sergio                    | 8342156     |
+| 3  | LAB-45  | 2026-07-07 | EN_CUSTODIA | Luis Enrique Higuera... | Mouse - verde                     | -                         | -           |
+| 4  | LAB-46  | 2026-07-08 | EN_CUSTODIA | Luis Enrique Higuera... | Guantes negros sin dedos          | -                         | -           |
+| 5  | AUDITORIO | 2026-07-08 | EN_CUSTODIA | Luis Enrique Higuera... | Cuaderno (Carta) Naranja          | -                         | -           |
+| 6  | LAB-43  | 2026-07-08 | EN_CUSTODIA | Luis Enrique Higuera... | Estuche de lentes                 | -                         | -           |
+| 7  | LAB-41  | 2026-07-08 | ENTREGADO   | Luis Enrique Higuera... | Cargador Laptop Lenovo            | Carlos Diego Otsubo Al... | 7923541     |
+| 8  | LAB-43  | 2026-07-08 | EN_CUSTODIA | Luis Enrique Higuera... | Mouse Inalambrico negro HP        | -                         | -           |
+| 9  | AUDITORIO | 2026-07-09 | EN_CUSTODIA | Luis Enrique Higuera... | Chompa Gris Oscuro                | -                         | -           |
+| 10 | AUDITORIO | 2026-07-10 | ENTREGADO   | Luis Enrique Higuera... | Celular                           | Pablo A.                  | 6518234     |
+| 11 | LAB-44  | 2026-07-10 | EN_CUSTODIA | Luis Enrique Higuera... | Mouse cableado Knup               | -                         | -           |
+| 12 | LAB-41  | 2026-07-10 | EN_CUSTODIA | Luis Enrique Higuera... | Mouse con cable Logitech          | -                         | -           |
+| 13 | AUDITORIO | 2026-07-11 | EN_CUSTODIA | Luis Enrique Higuera... | Cuaderno tamaño carta forro ve... | -                         | -           |
+| 14 | AUDITORIO | 2026-07-11 | ENTREGADO   | Luis Enrique Higuera... | Mochila Negra                     | Nicole                    | 5734819     |
+| 15 | LAB-43  | 2026-07-14 | ENTREGADO   | Luis Enrique Higuera... | Lentes negros                     | Jose Barja                | 4892375     |
+| 16 | LAB-43  | 2026-07-15 | ENTREGADO   | Luis Enrique Higuera... | Mouse Negro E&F inalambrico       | Adalid Vides Revilla R... | 8156742     |
+| 17 | AUDITORIO | 2026-07-15 | ENTREGADO   | Luis Enrique Higuera... | Laptop TUF                        | Mario Jose Martinez S.    | 7634521     |
+| 18 | LAB-43  | 2026-07-15 | ENTREGADO   | Luis Enrique Higuera... | Mouse Inalambrico Negro a pila    | Sebastian Vedia Barrios   | 6923847     |
+| 19 | LAB-43  | 2026-07-16 | EN_CUSTODIA | Luis Enrique Higuera... | Mouse Negro Lenovo sin recepto... | -                         | -           |
+| 20 | AUDITORIO | 2026-07-17 | EN_CUSTODIA | Luis Enrique Higuera... | Vasos de vidrios                  | -                         | -           |
+| 21 | LAB-44  | 2026-07-22 | EN_CUSTODIA | Luis Enrique Higuera... | Documento en rollo                | -                         | -           |
+| 22 | LAB-41  | 2026-07-22 | EN_CUSTODIA | Luis Enrique Higuera... | Cuaderno anillado pequeño tapa... | -                         | -           |
+| 23 | LAB-45  | 2026-08-03 | ENTREGADO   | Luis Enrique Higuera... | Billetera con carnet de Romer ... | Romer Cayo                | 5847321     |
+| 24 | LAB-41  | 2026-08-04 | ENTREGADO   | Luis Enrique Higuera... | Gorra Rosa                        | Erik Rojas                | 7293481     |
+| 25 | LAB-45  | 2026-07-31 | EN_CUSTODIA | Luis Enrique Higuera... | Estuchera Azul                    | -                         | -           |
+| 26 | LAB-45  | 2026-08-01 | ENTREGADO   | Luis Enrique Higuera... | Mouse Inalambrico Manhattan - ... | Ing. Mollo                | 1642000     |
+| 27 | LAB-45  | 2026-08-04 | ENTREGADO   | Luis Enrique Higuera... | Mouse Knup negro                  | Diores                    | 6234857     |
+| 28 | LAB-42  | 2026-08-04 | EN_CUSTODIA | Luis Enrique Higuera... | Tomatodo Verde                    | -                         | -           |
+| 29 | LAB-44  | 2026-08-04 | ENTREGADO   | Luis Enrique Higuera... | USB Lenovo doble entrada encon... | Luis Enrique              | 8734521     |
+| 30 | LAB-45  | 2026-08-05 | ENTREGADO   | Luis Enrique Higuera... | USB azul HP                       | Luis Miguel Rodas Vela... | 7156834     |
+| 31 | LAB-46  | 2026-08-11 | ENTREGADO   | Luis Enrique Higuera... | Cargador Compu ASUS               | Witozak Sanabria Micha... | 6842317     |
+| 32 | LAB-44  | 2026-08-11 | ENTREGADO   | Luis Enrique Higuera... | Cargador telefono                 | Jhonny                    | 5923748     |
+| 33 | LAB-44  | 2026-08-11 | EN_CUSTODIA | Luis Enrique Higuera... | Folder transparente               | -                         | -           |
+| 34 | LAB-43  | 2026-08-12 | ENTREGADO   | Luis Enrique Higuera... | Llavero verde con flash HP 3.0... | Julio Surco Sanchez       | 7318564     |
+| 35 | LAB-43  | 2026-08-12 | EN_CUSTODIA | Luis Enrique Higuera... | Flash                             | -                         | -           |
+| 36 | LAB-44  | 2026-08-12 | EN_CUSTODIA | Luis Enrique Higuera... | Objeto sin descripcion            | -                         | -           |
+| 37 | LAB-46  | 2026-08-14 | ENTREGADO   | Luis Enrique Higuera... | Chompa Azul Oscuro Talla L mar... | Nicolas                   | 8456213     |
+| 38 | LAB-45  | 2026-08-14 | ENTREGADO   | Luis Enrique Higuera... | Mouse inalambrico Logitech negro  | Favio Arispe              | 6734128     |
+| 39 | LAB-45  | 2026-08-15 | ENTREGADO   | Luis Enrique Higuera... | Cargador de laptop HP             | Alberto Mollo             | 1642000     |
+| 40 | LAB-42  | 2026-08-17 | EN_CUSTODIA | Luis Enrique Higuera... | Tomatodo con agua color crema     | -                         | -           |
+| 41 | LAB-45  | 2026-08-18 | EN_CUSTODIA | Luis Enrique Higuera... | Flash SP 8GB                      | -                         | -           |
+| 42 | LAB-44  | 2026-08-18 | ENTREGADO   | Luis Enrique Higuera... | Cargador Samsung negro con cab... | Leonardo Felipez          | 7923456     |
+| 43 | LAB-46  | 2026-08-19 | ENTREGADO   | Luis Enrique Higuera... | Auriculares inalambricos Realm... | Carlos Bruno              | 6548321     |
+| 44 | LAB-44  | 2026-08-19 | EN_CUSTODIA | Luis Enrique Higuera... | Auriculares negros con cable e... | -                         | -           |
+| 45 | LAB-42  | 2026-08-19 | ENTREGADO   | Luis Enrique Higuera... | Tomatodo Negro Stanley            | Ruben Ramos               | 8123457     |
+| 46 | LAB-41  | 2026-08-20 | ENTREGADO   | Luis Enrique Higuera... | Chalina roja a cuadros negros     | Santiago Roko Ramos       | 7654321     |
+| 47 | LAB-46  | 2026-08-21 | EN_CUSTODIA | Luis Enrique Higuera... | Flash sin funda metalica C.T.E... | -                         | -           |
+| 48 | LAB-45  | 2026-08-25 | ENTREGADO   | Luis Enrique Higuera... | Traper de cuerina crema           | Mateo Andres              | 5834219     |
+| 49 | LAB-41  | 2026-08-25 | EN_CUSTODIA | Luis Enrique Higuera... | Mouse Negro marca con cable USB   | -                         | -           |
+| 50 | LAB-41  | 2026-08-25 | ENTREGADO   | Luis Enrique Higuera... | Mouse negro inalambrico E&F       | Juan David Chiri Condori  | 6923871     |
+| 51 | LAB-44  | 2026-08-25 | EN_CUSTODIA | Luis Enrique Higuera... | Cabezal de cargador Huawei (bl... | -                         | -           |
+| 52 | LAB-46  | 2026-08-25 | ENTREGADO   | Luis Enrique Higuera... | Cargador de laptop Lenovo (negro) | Edwin Elio Flores Condori | 7412365     |
+| 53 | LAB-44  | 2026-08-26 | EN_CUSTODIA | Luis Enrique Higuera... | Auricular con cable negro marc... | -                         | -           |
+| 54 | LAB-44  | 2026-08-27 | ENTREGADO   | Luis Enrique Higuera... | Telefono Motorola con 2 camara... | Fernando C.               | 8234761     |
+| 55 | AUDITORIO | 2026-08-27 | EN_CUSTODIA | Luis Enrique Higuera... | Jarra de Vidrio transparente      | -                         | -           |
+| 56 | LAB-42  | 2026-08-27 | ENTREGADO   | Luis Enrique Higuera... | Cuaderno Verde Tamaño Carta       | Nelson Chumacero          | 6723418     |
+| 57 | LAB-45  | 2026-08-27 | ENTREGADO   | Luis Enrique Higuera... | Cable Tipo C Color Negro          | Oscar Alejandro Nava O... | 7893214     |
+| 58 | LAB-44  | 2026-08-27 | EN_CUSTODIA | Luis Enrique Higuera... | 1 guante negro                    | -                         | -           |
+| 59 | LAB-44  | 2026-08-27 | ENTREGADO   | Luis Enrique Higuera... | Cargador H&L blanco + cable negro | Ivan Matias P.            | 5614832     |
+| 60 | LAB-41  | 2026-08-28 | EN_CUSTODIA | Luis Enrique Higuera... | Flash negro con rojo Sandisk      | -                         | -           |
++----+---------+------------+-------------+-------------------------+-----------------------------------+---------------------------+-------------+
+  (Mostrando 60 de 108 objetos encontrados registrados en la base de datos)
+
+--------------------------------------------------------------------------------
+4. SCRIPT SQL COMPLETO (DDL Y DML)
+--------------------------------------------------------------------------------
+-- SCRIPT DDL: CREACION DE TABLAS (CU6)
+CREATE TABLE equipo (
+  id             SERIAL PRIMARY KEY,
+  activo         VARCHAR(30),
+  codigo         VARCHAR(50) NOT NULL UNIQUE,
+  laboratorio_id INT NOT NULL REFERENCES laboratorio(id),
+  tipo           VARCHAR(50) NOT NULL,
+  descripcion    VARCHAR(200) NOT NULL,
+  estado         VARCHAR(15) NOT NULL DEFAULT 'OPERATIVO'
+                 CHECK (estado IN ('OPERATIVO','EN_REPARACION','BAJA'))
+);
+
+CREATE TABLE equipo_red (
+  id          SERIAL PRIMARY KEY,
+  equipo_id   INT NOT NULL UNIQUE REFERENCES equipo(id) ON DELETE CASCADE,
+  ip          VARCHAR(45) NOT NULL,
+  mascara     VARCHAR(15) NOT NULL DEFAULT '255.255.255.0',
+  gateway     VARCHAR(45) NOT NULL DEFAULT '172.20.172.254',
+  dns1        VARCHAR(45) NOT NULL DEFAULT '10.10.0.251',
+  dns2        VARCHAR(45) NOT NULL DEFAULT '8.8.8.8',
+  proxy       VARCHAR(45) NOT NULL DEFAULT '172.20.172.254:3128',
+  grupo_red   VARCHAR(20) NOT NULL DEFAULT 'LAB41'
+);
+
+CREATE TABLE incidencia (
+  id             SERIAL PRIMARY KEY,
+  equipo_id      INT NOT NULL REFERENCES equipo(id),
+  reportado_por  INT NOT NULL REFERENCES usuario(id),
+  descripcion    VARCHAR(300) NOT NULL,
+  estado         VARCHAR(12) NOT NULL DEFAULT 'PENDIENTE'
+                 CHECK (estado IN ('PENDIENTE','EN_ATENCION','RESUELTA')),
+  solucion       VARCHAR(300),
+  fecha_reporte  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  fecha_solucion TIMESTAMP
+);
+
+CREATE TABLE objeto_encontrado (
+  id             SERIAL PRIMARY KEY,
+  laboratorio_id INT  NOT NULL REFERENCES laboratorio(id),
+  descripcion    VARCHAR(200) NOT NULL,
+  fecha_hallazgo DATE NOT NULL,
+  registrado_por INT  NOT NULL REFERENCES usuario(id),
+  estado         VARCHAR(12) NOT NULL DEFAULT 'EN_CUSTODIA'
+                 CHECK (estado IN ('EN_CUSTODIA','ENTREGADO')),
+  entregado_a    VARCHAR(100),
+  ci_receptor    VARCHAR(15),
+  fecha_entrega  TIMESTAMP
+);
+
+-- SCRIPT DML: INSERTS DE EQUIPOS (MUESTRA DE DATOS REALES)
+INSERT INTO equipo (activo, codigo, laboratorio_id, tipo, descripcion, estado) VALUES
+  ('U147111640682', 'U147111640682', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'MESA', 'OPERATIVO'),
+  ('U147111642098', 'U147111642098', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'MESA', 'OPERATIVO'),
+  ('U147111642099', 'U147111642099', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'MESA', 'OPERATIVO'),
+  ('U147111642100', 'U147111642100', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'MESA', 'OPERATIVO'),
+  ('U147111642101', 'U147111642101', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'MESA', 'OPERATIVO'),
+  ('U147111642102', 'U147111642102', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'MESA', 'OPERATIVO'),
+  ('U147111642103', 'U147111642103', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'MESA', 'OPERATIVO'),
+  ('U147111642104', 'U147111642104', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'MESA', 'OPERATIVO'),
+  ('U147111642105', 'U147111642105', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'MESA', 'OPERATIVO'),
+  ('U147111642106', 'U147111642106', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'MESA', 'OPERATIVO'),
+  ('U147111642107', 'U147111642107', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'MESA', 'OPERATIVO'),
+  ('U147111642108', 'U147111642108', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'MESA', 'OPERATIVO'),
+  ('U147111642109', 'U147111642109', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'MESA', 'OPERATIVO'),
+  ('U147111642110', 'U147111642110', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'MESA', 'OPERATIVO'),
+  ('U147111642111', 'U147111642111', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'MESA', 'OPERATIVO'),
+  ('U147111642112', 'U147111642112', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'MESA', 'OPERATIVO'),
+  ('U147111642113', 'U147111642113', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'MESA', 'OPERATIVO'),
+  ('U147111642114', 'U147111642114', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'MESA', 'OPERATIVO'),
+  ('U147111642115', 'U147111642115', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'MESA', 'OPERATIVO'),
+  ('U147111642116', 'U147111642116', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'MESA', 'OPERATIVO'),
+  ('U147111642117', 'U147111642117', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'MESA', 'OPERATIVO'),
+  ('U147111642118', 'U147111642118', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'MESA', 'OPERATIVO'),
+  ('U147111642119', 'U147111642119', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'MESA', 'OPERATIVO'),
+  ('U147111642120', 'U147111642120', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'MESA', 'OPERATIVO'),
+  ('U147112448703', 'U147112448703', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448704', 'U147112448704', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448705', 'U147112448705', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448706', 'U147112448706', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448707', 'U147112448707', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448708', 'U147112448708', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448709', 'U147112448709', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448710', 'U147112448710', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448711', 'U147112448711', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448712', 'U147112448712', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448713', 'U147112448713', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448714', 'U147112448714', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448715', 'U147112448715', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448716', 'U147112448716', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448717', 'U147112448717', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448718', 'U147112448718', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448719', 'U147112448719', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448720', 'U147112448720', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448721', 'U147112448721', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448722', 'U147112448722', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448723', 'U147112448723', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448724', 'U147112448724', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448725', 'U147112448725', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448726', 'U147112448726', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448727', 'U147112448727', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448728', 'U147112448728', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448729', 'U147112448729', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448730', 'U147112448730', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448731', 'U147112448731', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448732', 'U147112448732', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448733', 'U147112448733', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448734', 'U147112448734', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448735', 'U147112448735', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448736', 'U147112448736', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448737', 'U147112448737', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448738', 'U147112448738', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448739', 'U147112448739', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448740', 'U147112448740', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448741', 'U147112448741', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448742', 'U147112448742', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448743', 'U147112448743', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448744', 'U147112448744', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448745', 'U147112448745', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448746', 'U147112448746', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112448747', 'U147112448747', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112462441', 'U147112462441', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112462551', 'U147112462551', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112462578', 'U147112462578', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112462600', 'U147112462600', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112462633', 'U147112462633', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112462635', 'U147112462635', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112462642', 'U147112462642', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112462644', 'U147112462644', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112462646', 'U147112462646', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112462660', 'U147112462660', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112462665', 'U147112462665', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112462671', 'U147112462671', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112462810', 'U147112462810', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147112462816', 'U147112462816', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'SILLA', 'OPERATIVO'),
+  ('U147121716887', 'U147121716887', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'ESTABILIZADOR', 'OPERATIVO'),
+  ('U147121717244', 'U147121717244', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'ESTABILIZADOR', 'OPERATIVO'),
+  ('U147121717245', 'U147121717245', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'ESTABILIZADOR', 'OPERATIVO'),
+  ('U147121717246', 'U147121717246', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'ESTABILIZADOR', 'OPERATIVO'),
+  ('U147121717254', 'U147121717254', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'ESTABILIZADOR', 'OPERATIVO'),
+  ('U147121717255', 'U147121717255', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'ESTABILIZADOR', 'OPERATIVO'),
+  ('U147121717256', 'U147121717256', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'ESTABILIZADOR', 'OPERATIVO'),
+  ('U147121717257', 'U147121717257', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'ESTABILIZADOR', 'OPERATIVO'),
+  ('U147121717258', 'U147121717258', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'ESTABILIZADOR', 'OPERATIVO'),
+  ('U147121717259', 'U147121717259', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'ESTABILIZADOR', 'OPERATIVO'),
+  ('U147121717260', 'U147121717260', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'ESTABILIZADOR', 'OPERATIVO'),
+  ('U147121717261', 'U147121717261', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'ESTABILIZADOR', 'OPERATIVO'),
+  ('U147121717262', 'U147121717262', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'ESTABILIZADOR', 'OPERATIVO'),
+  ('U147121717263', 'U147121717263', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'ESTABILIZADOR', 'OPERATIVO'),
+  ('U147121717264', 'U147121717264', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'ESTABILIZADOR', 'OPERATIVO'),
+  ('U147121717265', 'U147121717265', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'ESTABILIZADOR', 'OPERATIVO'),
+  ('U147121717266', 'U147121717266', (SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'OTRO', 'ESTABILIZADOR', 'OPERATIVO');
+
+-- SCRIPT DML: INSERTS DE CONFIGURACION DE RED (DATOS REALES)
+INSERT INTO equipo_red (equipo_id, ip, mascara, gateway, dns1, dns2, proxy, grupo_red) VALUES
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-DOC'), '172.20.172.5', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-01'), '172.20.172.184', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-02'), '172.20.172.185', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-03'), '172.20.172.186', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-04'), '172.20.172.187', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-05'), '172.20.172.188', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-06'), '172.20.172.189', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-07'), '172.20.172.190', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-08'), '172.20.172.191', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-09'), '172.20.172.192', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-10'), '172.20.172.193', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-11'), '172.20.172.194', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-12'), '172.20.172.195', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-13'), '172.20.172.196', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-14'), '172.20.172.197', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-15'), '172.20.172.198', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-16'), '172.20.172.199', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-17'), '172.20.172.200', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-18'), '172.20.172.201', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-19'), '172.20.172.202', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-20'), '172.20.172.203', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-21'), '172.20.172.204', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-22'), '172.20.172.205', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-23'), '172.20.172.206', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-24'), '172.20.172.207', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-25'), '172.20.172.208', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-26'), '172.20.172.209', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-27'), '172.20.172.210', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-28'), '172.20.172.211', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-29'), '172.20.172.212', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-30'), '172.20.172.213', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-31'), '172.20.172.214', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-32'), '172.20.172.215', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-33'), '172.20.172.216', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-34'), '172.20.172.217', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-35'), '172.20.172.218', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-36'), '172.20.172.219', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-37'), '172.20.172.220', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-38'), '172.20.172.221', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-39'), '172.20.172.222', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-40'), '172.20.172.223', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-41'), '172.20.172.224', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-42'), '172.20.172.225', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-43'), '172.20.172.226', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-44'), '172.20.172.227', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB41'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-42, PC-DOC'), '172.20.173.2', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB236-42'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-43, PC-DOC'), '172.20.172.10', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB43'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-43, PC-01'), '172.20.172.138', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB43'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-43, PC-02'), '172.20.172.139', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB43'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-43, PC-03'), '172.20.172.140', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB43'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-43, PC-04'), '172.20.172.141', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB43'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-43, PC-05'), '172.20.172.142', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB43'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-43, PC-06'), '172.20.172.143', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB43'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-43, PC-07'), '172.20.172.144', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB43'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-43, PC-08'), '172.20.172.145', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB43'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-43, PC-09'), '172.20.172.146', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB43'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-43, PC-10'), '172.20.172.147', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB43'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-43, PC-11'), '172.20.172.148', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB43'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-43, PC-12'), '172.20.172.149', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB43'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-43, PC-13'), '172.20.172.150', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB43'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-43, PC-14'), '172.20.172.151', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB43'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-43, PC-15'), '172.20.172.152', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB43'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-43, PC-16'), '172.20.172.153', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB43'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-43, PC-17'), '172.20.172.154', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB43'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-43, PC-18'), '172.20.172.155', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB43'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-43, PC-19'), '172.20.172.156', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB43'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-43, PC-20'), '172.20.172.157', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB43'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-43, PC-21'), '172.20.172.158', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB43'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-43, PC-22'), '172.20.172.159', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB43'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-43, PC-23'), '172.20.172.160', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB43'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-43, PC-24'), '172.20.172.161', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB43'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-43, PC-25'), '172.20.172.162', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB43'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-DOC'), '172.20.172.8', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-01'), '172.20.172.55', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-02'), '172.20.172.56', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-03'), '172.20.172.57', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-04'), '172.20.172.58', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-05'), '172.20.172.59', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-06'), '172.20.172.60', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-07'), '172.20.172.61', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-08'), '172.20.172.62', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-09'), '172.20.172.63', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-10'), '172.20.172.64', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-11'), '172.20.172.65', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-12'), '172.20.172.66', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-13'), '172.20.172.67', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-14'), '172.20.172.68', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-15'), '172.20.172.69', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-16'), '172.20.172.70', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-17'), '172.20.172.71', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-18'), '172.20.172.72', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-19'), '172.20.172.73', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-20'), '172.20.172.74', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-21'), '172.20.172.75', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-22'), '172.20.172.76', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-23'), '172.20.172.77', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-24'), '172.20.172.78', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-25'), '172.20.172.79', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-26'), '172.20.172.80', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-27'), '172.20.172.81', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-28'), '172.20.172.82', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-29'), '172.20.172.83', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-30'), '172.20.172.84', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-31'), '172.20.172.85', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-32'), '172.20.172.86', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-33'), '172.20.172.87', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-34'), '172.20.172.88', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-35'), '172.20.172.89', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-36'), '172.20.172.90', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-37'), '172.20.172.91', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-38'), '172.20.172.92', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-39'), '172.20.172.93', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-44, PC-40'), '172.20.172.94', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB44'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-DOC'), '172.20.172.57', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-01'), '172.20.172.11', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-02'), '172.20.172.12', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-03'), '172.20.172.13', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-04'), '172.20.172.14', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-05'), '172.20.172.15', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-06'), '172.20.172.16', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-07'), '172.20.172.17', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-08'), '172.20.172.18', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-09'), '172.20.172.19', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-10'), '172.20.172.20', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-11'), '172.20.172.21', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-12'), '172.20.172.22', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-13'), '172.20.172.23', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-14'), '172.20.172.24', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-15'), '172.20.172.25', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-16'), '172.20.172.26', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-17'), '172.20.172.27', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-18'), '172.20.172.28', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-19'), '172.20.172.29', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-20'), '172.20.172.30', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-21'), '172.20.172.31', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-22'), '172.20.172.32', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-23'), '172.20.172.33', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-24'), '172.20.172.34', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-25'), '172.20.172.35', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-26'), '172.20.172.36', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-27'), '172.20.172.37', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-28'), '172.20.172.38', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-29'), '172.20.172.39', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-30'), '172.20.172.40', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-31'), '172.20.172.41', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-32'), '172.20.172.42', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-33'), '172.20.172.43', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-34'), '172.20.172.44', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-35'), '172.20.172.45', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-36'), '172.20.172.46', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-37'), '172.20.172.47', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-38'), '172.20.172.48', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-39'), '172.20.172.49', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-40'), '172.20.172.50', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-41'), '172.20.172.51', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-42'), '172.20.172.52', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-43'), '172.20.172.53', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-44'), '172.20.172.54', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB45'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-46, PC-DOC'), '172.20.172.9', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB46'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-46, PC-01'), '172.20.172.95', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB46'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-46, PC-02'), '172.20.172.96', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB46'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-46, PC-03'), '172.20.172.97', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB46'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-46, PC-04'), '172.20.172.98', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB46'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-46, PC-05'), '172.20.172.99', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB46'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-46, PC-06'), '172.20.172.100', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB46'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-46, PC-07'), '172.20.172.101', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB46'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-46, PC-08'), '172.20.172.102', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB46'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-46, PC-09'), '172.20.172.103', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB46'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-46, PC-10'), '172.20.172.104', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB46'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-46, PC-11'), '172.20.172.105', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB46'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-46, PC-12'), '172.20.172.106', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB46'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-46, PC-13'), '172.20.172.107', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB46'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-46, PC-14'), '172.20.172.108', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB46'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-46, PC-15'), '172.20.172.109', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB46'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-46, PC-16'), '172.20.172.110', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB46'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-46, PC-17'), '172.20.172.111', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB46'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-46, PC-18'), '172.20.172.112', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB46'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-46, PC-19'), '172.20.172.113', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB46'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-46, PC-20'), '172.20.172.114', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB46'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-46, PC-21'), '172.20.172.115', '255.255.255.0', '172.20.172.254', '10.10.0.251', '8.8.8.8', '172.20.172.254:3128', 'LAB46');
+
+-- SCRIPT DML: INSERTS DE INCIDENCIAS (DATOS REALES)
+INSERT INTO incidencia (equipo_id, reportado_por, descripcion, estado, solucion, fecha_reporte, fecha_solucion) VALUES
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-DOC'), (SELECT id FROM usuario WHERE codigo = '186'), 'La PC no enciende luego de corte de energía eléctrica; no da señales de corriente ni giran ventiladores.', 'RESUELTA', 'Se sustituyó fuente de poder ATX de 500W dañada y se verificó encendido y voltajes normales.', '2026-11-05 08:08:07.55208', '2026-11-06 10:08:07.55208'),
+  ((SELECT id FROM equipo WHERE codigo = 'U147124217322'), (SELECT id FROM usuario WHERE codigo = '599'), 'La pantalla parpadea con líneas horizontales intermitentes al mover el cable de video.', 'RESUELTA', 'Se reemplazó cable de video VGA con pines doblados por cable nuevo de alta resolución.', '2026-11-07 09:08:07.55208', '2026-11-08 07:08:07.55208'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-43, PC-01'), (SELECT id FROM usuario WHERE codigo = '29395'), 'Se reinicia súbitamente a los 10 minutos de uso continuo por sobrecalentamiento del procesador.', 'RESUELTA', 'Se realizó limpieza profunda del cooler/disipador y aplicación de pasta térmica gris.', '2026-11-09 06:08:07.55208', '2026-11-10 11:08:07.55208'),
+  ((SELECT id FROM equipo WHERE codigo = 'U141913440267'), (SELECT id FROM usuario WHERE codigo = '603'), 'Presenta pantalla azul (BSOD: MEMORY_MANAGEMENT) al abrir entornos NetBeans y navegadores.', 'EN_ATENCION', 'En diagnóstico con MemTest86 en taller de soporte; módulo DDR4 de 8GB en verificación.', '2026-11-11 04:08:07.55208', NULL),
+  ((SELECT id FROM equipo WHERE codigo = 'U141913440265'), (SELECT id FROM usuario WHERE codigo = '29396'), 'Estabilizador emite zumbido continuo muy fuerte y calienta de forma excesiva al conectar la PC.', 'EN_ATENCION', 'Desconectado por seguridad; derivado al área técnica para cambio de relé o reemplazo de unidad.', '2026-11-12 10:08:07.55208', NULL),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-05'), (SELECT id FROM usuario WHERE codigo = '625'), 'Error de inicio en BIOS: "Reboot and Select proper Boot device", no detecta la unidad SSD.', 'EN_ATENCION', 'Se verificaron cables SATA y de poder; pendiente clonación e instalación de nueva unidad SSD Kingston.', '2026-11-13 07:08:07.55208', NULL),
+  ((SELECT id FROM equipo WHERE codigo = 'U133513431638'), (SELECT id FROM usuario WHERE codigo = '652'), 'Los puertos USB frontales están dañados físicamente y no reconocen memorias flash de los docentes.', 'RESUELTA', 'Se desconectó panel frontal roto y se instaló extensor USB 3.0 directo desde placa trasera.', '2026-11-10 10:08:07.55208', '2026-11-11 08:08:07.55208'),
+  ((SELECT id FROM equipo WHERE codigo = 'U141913440225'), (SELECT id FROM usuario WHERE codigo = '862'), 'El teclado y mouse inalámbricos no responden o tienen excesivo retraso al escribir.', 'RESUELTA', 'Se cambiaron baterías alcalinas AAA y se reubicó receptor USB en puerto frontal sin interferencias.', '2026-11-12 02:08:07.55208', '2026-11-12 11:08:07.55208'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-08'), (SELECT id FROM usuario WHERE codigo = '29397'), 'La PC enciende pero emite 3 pitidos cortos y no envía señal de video a la pantalla.', 'PENDIENTE', NULL, '2026-11-14 05:08:07.55208', NULL),
+  ((SELECT id FROM equipo WHERE codigo = 'U141924212709'), (SELECT id FROM usuario WHERE codigo = '1250'), 'El botón de encendido frontal del monitor está hundido y no se puede apagar ni encender fácilmente.', 'PENDIENTE', NULL, '2026-11-15 09:08:07.55208', NULL),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-10'), (SELECT id FROM usuario WHERE codigo = '28204'), 'Conector de red RJ-45 roto en el extremo del patchcord; pierde conexión a internet al menor movimiento.', 'RESUELTA', 'Se recrimpó nuevo conector RJ-45 categoría 6 con capuchón protector y se certificó enlace gigabit.', '2026-11-13 05:08:07.55208', '2026-11-13 10:08:07.55208'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-46, PC-08'), (SELECT id FROM usuario WHERE codigo = '1642'), 'Sistema operativo Fedora Linux no arranca tras actualización incompleta; entra a modo emergencia.', 'EN_ATENCION', 'Auxiliar de turno realizando recuperación de paquetes rpm y reconstrucción de imagen initramfs.', '2026-11-16 06:08:07.55208', NULL),
+  ((SELECT id FROM equipo WHERE codigo = 'U141913440276'), (SELECT id FROM usuario WHERE codigo = '28207'), 'Ventilador posterior del gabinete produce ruido chirriante constante que perturba las clases.', 'PENDIENTE', NULL, '2026-11-16 10:08:07.55208', NULL),
+  ((SELECT id FROM equipo WHERE codigo = 'U147111642110'), (SELECT id FROM usuario WHERE codigo = '186'), 'El proyector muestra luz indicadora de "LAMP" en rojo y se apaga automáticamente a los 5 minutos.', 'PENDIENTE', NULL, '2026-11-16 18:08:07.55208', NULL),
+  ((SELECT id FROM equipo WHERE codigo = 'U147124217051'), (SELECT id FROM usuario WHERE codigo = '29398'), 'Monitor pierde el color azul, toda la imagen se visualiza con tonalidad amarilla/rojiza.', 'RESUELTA', 'Se reemplazó cable VGA defectuoso y se restablecieron perfiles de color en configuración del monitor.', '2026-11-14 08:08:07.55208', '2026-11-15 06:08:07.55208'),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-45, PC-15'), (SELECT id FROM usuario WHERE codigo = '01'), 'Teclas "Shift", "Espacio" y "Ctrl" no responden en el teclado USB del equipo.', 'PENDIENTE', NULL, '2026-11-17 06:08:07.55208', NULL),
+  ((SELECT id FROM equipo WHERE codigo = 'LAB-41, PC-16'), (SELECT id FROM usuario WHERE codigo = '599'), 'Tarjeta de red integrada no detecta cable de red; sin conexión física (link apagado).', 'RESUELTA', 'Se instaló tarjeta de red PCIe Gigabit TP-Link y se deshabilitó NIC dañada en BIOS.', '2026-11-11 09:08:07.55208', '2026-11-12 04:08:07.55208'),
+  ((SELECT id FROM equipo WHERE codigo = 'U141913440309'), (SELECT id FROM usuario WHERE codigo = '28210'), 'Mouse óptico tiene la rueda de scroll trabada y el botón izquierdo hace doble clic involuntario.', 'RESUELTA', 'Se entregó mouse óptico USB nuevo del stock de repuestos de almacén.', '2026-11-15 04:08:07.55208', '2026-11-15 11:08:07.55208');
+
+-- SCRIPT DML: INSERTS DE OBJETOS ENCONTRADOS (DATOS REALES)
+INSERT INTO objeto_encontrado (laboratorio_id, descripcion, fecha_hallazgo, registrado_por, estado, entregado_a, ci_receptor, fecha_entrega) VALUES
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'Carnet de Micaela Huanca Rojas', '2026-07-07', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-45'), 'MousePad Negro', '2026-07-07', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Sergio', '8342156', '2026-07-09 10:30:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-45'), 'Mouse - verde', '2026-07-07', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-46'), 'Guantes negros sin dedos', '2026-07-08', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'AUDITORIO'), 'Cuaderno (Carta) Naranja', '2026-07-08', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-43'), 'Estuche de lentes', '2026-07-08', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'Cargador Laptop Lenovo', '2026-07-08', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Carlos Diego Otsubo Alurralde', '7923541', '2026-07-15 14:15:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-43'), 'Mouse Inalambrico negro HP', '2026-07-08', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'AUDITORIO'), 'Chompa Gris Oscuro', '2026-07-09', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'AUDITORIO'), 'Celular', '2026-07-10', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Pablo A.', '6518234', '2026-07-11 09:45:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-44'), 'Mouse cableado Knup', '2026-07-10', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'Mouse con cable Logitech', '2026-07-10', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'AUDITORIO'), 'Cuaderno tamaño carta forro verde arana anillado', '2026-07-11', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'AUDITORIO'), 'Mochila Negra', '2026-07-11', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Nicole', '5734819', '2026-07-14 11:00:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-43'), 'Lentes negros', '2026-07-14', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Jose Barja', '4892375', '2026-07-16 15:30:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-43'), 'Mouse Negro E&F inalambrico', '2026-07-15', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Adalid Vides Revilla Roman', '8156742', '2026-07-17 10:00:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'AUDITORIO'), 'Laptop TUF', '2026-07-15', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Mario Jose Martinez S.', '7634521', '2026-07-16 08:30:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-43'), 'Mouse Inalambrico Negro a pila', '2026-07-15', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Sebastian Vedia Barrios', '6923847', '2026-07-18 09:15:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-43'), 'Mouse Negro Lenovo sin receptor, a pila AAA', '2026-07-16', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'AUDITORIO'), 'Vasos de vidrios', '2026-07-17', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-44'), 'Documento en rollo', '2026-07-22', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'Cuaderno anillado pequeño tapa blanca FUNERARIAS PERU con marcador azul', '2026-07-22', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-45'), 'Billetera con carnet de Romer Cayo, Marca CAT', '2026-08-03', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Romer Cayo', '5847321', '2026-08-04 14:00:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'Gorra Rosa', '2026-08-04', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Erik Rojas', '7293481', '2026-08-06 09:30:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-45'), 'Estuchera Azul', '2026-07-31', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-45'), 'Mouse Inalambrico Manhattan - sin USB', '2026-08-01', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Ing. Mollo', '1642000', '2026-08-05 10:45:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-45'), 'Mouse Knup negro', '2026-08-04', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Diores', '6234857', '2026-08-07 11:30:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-42'), 'Tomatodo Verde', '2026-08-04', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-44'), 'USB Lenovo doble entrada encontrado PC docente', '2026-08-04', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Luis Enrique', '8734521', '2026-08-05 16:00:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-45'), 'USB azul HP', '2026-08-05', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Luis Miguel Rodas Velasquez', '7156834', '2026-08-08 10:00:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-46'), 'Cargador Compu ASUS', '2026-08-11', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Witozak Sanabria Michael Niko', '6842317', '2026-08-14 09:00:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-44'), 'Cargador telefono', '2026-08-11', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Jhonny', '5923748', '2026-08-13 15:15:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-44'), 'Folder transparente', '2026-08-11', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-43'), 'Llavero verde con flash HP 3.0 con figuras geometricas', '2026-08-12', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Julio Surco Sanchez', '7318564', '2026-08-14 11:45:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-43'), 'Flash', '2026-08-12', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-44'), 'Objeto sin descripcion', '2026-08-12', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-46'), 'Chompa Azul Oscuro Talla L marca Sofich', '2026-08-14', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Nicolas', '8456213', '2026-08-19 10:30:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-45'), 'Mouse inalambrico Logitech negro', '2026-08-14', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Favio Arispe', '6734128', '2026-08-18 14:00:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-45'), 'Cargador de laptop HP', '2026-08-15', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Alberto Mollo', '1642000', '2026-08-20 09:00:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-42'), 'Tomatodo con agua color crema', '2026-08-17', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-45'), 'Flash SP 8GB', '2026-08-18', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-44'), 'Cargador Samsung negro con cable Type C VIN', '2026-08-18', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Leonardo Felipez', '7923456', '2026-08-22 10:15:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-46'), 'Auriculares inalambricos Realme Buds T110 negro', '2026-08-19', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Carlos Bruno', '6548321', '2026-08-25 11:00:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-44'), 'Auriculares negros con cable entrada Jack Cafini', '2026-08-19', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-42'), 'Tomatodo Negro Stanley', '2026-08-19', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Ruben Ramos', '8123457', '2026-08-22 16:30:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'Chalina roja a cuadros negros', '2026-08-20', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Santiago Roko Ramos', '7654321', '2026-08-26 09:45:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-46'), 'Flash sin funda metalica C.T.E.U.B', '2026-08-21', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-45'), 'Traper de cuerina crema', '2026-08-25', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Mateo Andres', '5834219', '2026-08-27 10:00:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'Mouse Negro marca con cable USB', '2026-08-25', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'Mouse negro inalambrico E&F', '2026-08-25', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Juan David Chiri Condori', '6923871', '2026-08-28 14:30:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-44'), 'Cabezal de cargador Huawei (blanco)', '2026-08-25', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-46'), 'Cargador de laptop Lenovo (negro)', '2026-08-25', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Edwin Elio Flores Condori', '7412365', '2026-08-29 11:15:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-44'), 'Auricular con cable negro marca H&L', '2026-08-26', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-44'), 'Telefono Motorola con 2 camaras color Viva Magenta', '2026-08-27', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Fernando C.', '8234761', '2026-08-29 15:00:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'AUDITORIO'), 'Jarra de Vidrio transparente', '2026-08-27', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-42'), 'Cuaderno Verde Tamaño Carta', '2026-08-27', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Nelson Chumacero', '6723418', '2026-09-01 10:00:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-45'), 'Cable Tipo C Color Negro', '2026-08-27', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Oscar Alejandro Nava Orihuela', '7893214', '2026-08-29 09:30:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-44'), '1 guante negro', '2026-08-27', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-44'), 'Cargador H&L blanco + cable negro', '2026-08-27', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Ivan Matias P.', '5614832', '2026-08-29 11:00:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'Flash negro con rojo Sandisk', '2026-08-28', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-45'), 'Tomatodo Rosado Marca ULINE', '2026-08-31', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Melissa', '6234891', '2026-09-04 10:45:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-44'), 'Auriculares con cable color blanco', '2026-08-31', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-45'), 'Carnet de Estudiante Alison Yesenia Canaviri Mamani', '2026-08-31', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-46'), 'Flash USB color blanco HP', '2026-08-31', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Israel', '7834512', '2026-09-03 14:00:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'Auriculares blancos SAMSUNG con cable', '2026-09-01', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'Termo/Tomatodo de acero inoxidable, tapa negra con blanco', '2026-09-01', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Carmen', '5923147', '2026-09-05 11:30:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-45'), 'Celular Infinix azul y un cargador Tecno blanco tipo C', '2026-09-01', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'Cargador laptop Chicony + adaptador white', '2026-09-01', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Mateo', '6148732', '2026-09-03 09:00:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-46'), 'Chompa Violeta con lineas blancas y negras Talla M etiqueta Nike Supreme', '2026-09-01', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'Auriculares Inalambricos Marca Tomato Negro con su caja de carga', '2026-09-02', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'AUDITORIO'), 'Celular morado', '2026-09-03', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Esther I.', '8312647', '2026-09-05 10:30:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-45'), 'Termo Stanley Azul', '2026-09-03', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Julio S.', '7318564', '2026-09-08 14:00:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-46'), 'Audifonos Azules con cable', '2026-09-03', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'Audifonos inalambricos negros Tomate', '2026-09-03', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Franz Estrada C.', '6947213', '2026-09-05 16:30:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-43'), 'Cargador Lenovo negro', '2026-09-03', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Erika G. Sanchez C.', '7523841', '2026-09-09 10:00:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-45'), 'Raqueta Negra Head', '2026-09-03', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Maria Rebeca Alvarez', '5734219', '2026-09-10 11:45:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-46'), 'Cargador Blanco doble entrada Win', '2026-09-04', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Nicolas', '8456213', '2026-09-09 09:00:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-45'), 'Termo metalico color negro', '2026-09-07', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-46'), 'Cable USB blanco', '2026-09-08', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Yazmin V.', '6214873', '2026-09-10 15:00:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-45'), 'Chompa verde oscuro', '2026-09-09', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Juan Daniel Angelo', '7423618', '2026-09-16 10:30:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'Almohadilla para borrar pizarra', '2026-09-09', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-43'), 'Audifonos Blancos', '2026-09-10', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-45'), 'Audifonos negros caja dinamica', '2026-09-11', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-45'), 'USB HP', '2026-09-11', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'AUDITORIO'), 'Cuaderno Winner azul', '2026-09-11', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Judith', '5832147', '2026-09-15 09:30:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'Cuaderno Lila', '2026-09-11', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Matias', '6734521', '2026-09-14 14:00:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'Funda de lentes (cajita negra)', '2026-09-14', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-46'), 'Mouse Negro HP inalambrico', '2026-09-14', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'Funda azul oscuro tapa dura cuerina para lentes', '2026-09-15', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-44'), 'Estuche negro con mouse negro', '2026-09-15', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Maicol Ruiz', '7923418', '2026-09-18 11:00:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-46'), 'Audifono negro Redmi', '2026-09-16', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Abigail Copa', '6143827', '2026-09-19 10:15:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-46'), 'Bolsa con ropa deportiva', '2026-09-16', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Jose Caceres', '8234716', '2026-09-17 14:30:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-46'), 'Cargador blanco marca Gerlax', '2026-09-16', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Arnold Puma', '5712348', '2026-09-18 09:00:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-43'), 'Cargador Blanco Marca Infinix con cable negro', '2026-09-16', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Kihomy Mariel Valencia Paredes', '7614823', '2026-09-23 10:00:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'Lentes negros con marco dorado', '2026-09-18', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-46'), 'Brillo voluminizador', '2026-09-19', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Monica Bonifaz', '6834127', '2026-09-22 15:30:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'AUDITORIO'), 'Hojas con flip', '2026-09-23', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Adriana', '5918423', '2026-09-25 09:45:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-42'), 'Cuaderno Rojo', '2026-09-23', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-41'), 'Mouse inalambrico completo', '2026-09-29', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-43'), 'Estuche de la Unifranz', '2026-09-29', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Ricardo', '8123469', '2026-10-03 11:00:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-46'), 'Cargador para Laptop marca DELL color Negro', '2026-09-30', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Jizzi Merma', '7234816', '2026-10-06 14:15:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-43'), 'Lentes blanco Amstel con vidrios negros', '2026-09-30', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Ruben Vargas', '6592341', '2026-10-04 10:30:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-43'), 'Flash x795w HP 16GB USB 3.2', '2026-09-30', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-43'), 'Flash SP 4G', '2026-09-30', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-46'), 'Hoja de Formulario de leyes logicas', '2026-10-01', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL),
+  ((SELECT id FROM laboratorio WHERE codigo = 'AUDITORIO'), 'Cargador negro HP 45W (conferencia AWS)', '2026-10-02', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Maria Teresa Honor Rivera', '7348219', '2026-10-07 09:15:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-46'), 'Cargador blanco Infinix con cable negro', '2026-10-02', (SELECT id FROM usuario WHERE codigo = '01'), 'ENTREGADO', 'Hugo Villca Ramos', '6823417', '2026-10-06 15:45:00.0'),
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-46'), 'Cuaderno anillado color verde (pequeño)', '2026-10-02', (SELECT id FROM usuario WHERE codigo = '01'), 'EN_CUSTODIA', NULL, NULL, NULL);
+
