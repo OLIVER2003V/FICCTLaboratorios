@@ -21,19 +21,19 @@ VALUES
   ((SELECT id FROM laboratorio WHERE codigo = 'LAB-44'),
    (SELECT id FROM usuario WHERE codigo = '3768'),
    '2026-11-17', '07:00:00', '22:30:00', 'DEFENSA DE PROYECTO',
-   'INF513 SC - TECNOLOGIA WEB (Defensa de proyecto final)',
+   'INF513 SC - TECNOLOGIA WEB',
    'APROBADA', (SELECT id FROM usuario WHERE codigo = '01'), 'Aprobado por Encargado de Laboratorios'),
 
   -- Miércoles 18 de noviembre
   ((SELECT id FROM laboratorio WHERE codigo = 'LAB-44'),
    (SELECT id FROM usuario WHERE codigo = '3768'),
    '2026-11-18', '07:00:00', '22:30:00', 'DEFENSA DE PROYECTO',
-   'INF120 SA - TECNOLOGIA WEB (Defensa de proyecto final)',
+   'INF120 SA - TECNOLOGIA WEB',
    'APROBADA', (SELECT id FROM usuario WHERE codigo = '01'), 'Aprobado por Encargado de Laboratorios'),
 
   -- Viernes 20 de noviembre
   ((SELECT id FROM laboratorio WHERE codigo = 'LAB-44'),
    (SELECT id FROM usuario WHERE codigo = '3768'),
    '2026-11-20', '07:00:00', '22:30:00', 'DEFENSA DE PROYECTO',
-   'INF120 SA - TECNOLOGIA WEB (Defensa de proyecto final)',
+   'INF120 SA - TECNOLOGIA WEB',
    'APROBADA', (SELECT id FROM usuario WHERE codigo = '01'), 'Aprobado por Encargado de Laboratorios');
