@@ -18,10 +18,18 @@ public final class Validar {
     private Validar() {
     }
 
-    /** Fecha en formato AAAA-MM-DD. */
+    /** Fecha en formato AAAA-MM-DD (acepta también meses o días de un dígito como 2026-12-1). */
     public static LocalDate fecha(String valor, String campo) throws NegocioException {
+        String v = valor.trim();
+        String[] partes = v.split("-");
+        if (partes.length == 3) {
+            String y = partes[0].trim();
+            String m = partes[1].trim().length() == 1 ? "0" + partes[1].trim() : partes[1].trim();
+            String d = partes[2].trim().length() == 1 ? "0" + partes[2].trim() : partes[2].trim();
+            v = y + "-" + m + "-" + d;
+        }
         try {
-            return LocalDate.parse(valor.trim());
+            return LocalDate.parse(v);
         } catch (DateTimeParseException e) {
             throw new NegocioException("La " + campo + " '" + valor + "' no es válida. Use el formato AAAA-MM-DD, "
                     + "por ejemplo 2026-11-03.");

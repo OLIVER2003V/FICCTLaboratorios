@@ -51,11 +51,16 @@ public class PermutaController {
         manejadores.put("LISMSJ", this::listarMensajes);
     }
 
-    // SOLPMT["69","2026-11-26","26693"]  (id o código del turno, fecha, código o correo del reemplazante)
+    // SOLPMT["2026-11-26","26693"]  o  SOLPMT["*","2026-11-26","26693"]
     public Resultado solicitar(Comando c, Usuario u) throws NegocioException, SQLException {
-        c.exigirParametros(3, "SOLPMT[\"id_turno\",\"fecha\",\"reemplazante\"] (vea sus turnos con LISTUR[\"*\"])");
+        c.exigirEntre(2, 3, "SOLPMT[\"fecha\",\"reemplazante\"] o SOLPMT[\"*\",\"fecha\",\"reemplazante\"]");
         Fila sem = buscar.semestreActivo();
-        LocalDate fecha = Validar.fecha(c.param(1), "fecha");
+
+        String paramTurno = c.cantidad() == 3 ? c.param(0).trim() : "*";
+        String paramFecha = c.cantidad() == 3 ? c.param(1) : c.param(0);
+        String paramReemplazante = c.cantidad() == 3 ? c.param(2) : c.param(1);
+
+        LocalDate fecha = Validar.fecha(paramFecha, "fecha");
         if (!fecha.isAfter(LocalDate.now())) {
             throw new NegocioException("La permuta debe ser para una fecha futura.");
         }
@@ -63,12 +68,14 @@ public class PermutaController {
         int diaFecha = fecha.getDayOfWeek().getValue();
 
         Fila turno = null;
-        try {
-            int posibleId = Integer.parseInt(c.param(0).trim());
-            turno = turnoDAO.buscarPorId(posibleId);
-        } catch (NumberFormatException ignored) {}
+        if (!paramTurno.equals("*")) {
+            try {
+                int posibleId = Integer.parseInt(paramTurno);
+                turno = turnoDAO.buscarPorId(posibleId);
+            } catch (NumberFormatException ignored) {}
+        }
 
-        // Si pasó su código (ej. 29405) o "*" o el ID directo no pertenecía al usuario, buscar su turno de ese día
+        // Si pasó "*", su código de auxiliar o el turno no le pertenecía, buscar automáticamente su turno de ese día
         if (turno == null || turno.entero("semestre_id") != sem.entero("id") || turno.entero("auxiliar_id") != u.getId()) {
             turno = turnoDAO.buscarPorAuxiliarYDia(sem.entero("id"), u.getId(), diaFecha);
         }
@@ -83,7 +90,7 @@ public class PermutaController {
             throw new NegocioException("El turno #" + turno.texto("id") + " es los " + Formato.dia(dia) + " y el " + fecha
                     + " es " + Formato.dia(diaFecha) + ".");
         }
-        Usuario reemplazante = buscar.usuarioActivoConRol(c.param(2), "AUX", "auxiliar");
+        Usuario reemplazante = buscar.usuarioActivoConRol(paramReemplazante, "AUX", "auxiliar");
         if (reemplazante.getId() == u.getId()) {
             throw new NegocioException("El reemplazante debe ser otro auxiliar.");
         }
