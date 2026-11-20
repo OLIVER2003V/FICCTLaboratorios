@@ -118,7 +118,7 @@ A. DATOS DE LA TABLA: reserva (35 reservas ordenadas cronologicamente)
 | 32 | AUDITORIO  | 2026-12-01 | 07:00 - 09:15   | EXAMEN              | Sistemas de información II      | ANGELICA GARZON CUELLAR         | APROBADA   |                                 |
 | 33 | AUDITORIO  | 2026-12-02 | 07:00 - 08:30   | EXAMEN              | Ingeniería de requisitos        | ANGELICA GARZON CUELLAR         | PENDIENTE  | Obs: examen teórico, Aula para intercambio (23) |
 | 34 | LAB-46     | 2026-12-03 | 16:00 - 18:15   | EXAMEN              | Exámenes y revisión de proyecto (Estructura de datos 2 -sb) | CESPEDES ROBERTO CA VACA PINTO  | PENDIENTE  | Obs: Evaluación                 |
-| 35 | LAB-43     | 2026-12-10 | 14:00 - 16:00   | EXAMEN              | Examen final de Metodologia     | Jairo Sanabria Ortega           | PENDIENTE  |                                 |
+| 35 | LAB-43     | 2026-12-10 | 14:00 - 16:00   | EXAMEN              | Auxiliatura de Metodologia      | Jairo Sanabria Ortega           | PENDIENTE  | Se necesita 1 auxiliar de apoyo |
 +----+------------+------------+-----------------+---------------------+---------------------------------+---------------------------------+------------+---------------------------------+
 Total de reservas registradas en el sistema: 35
 
@@ -231,7 +231,7 @@ INSERT INTO reserva (laboratorio_id, solicitante_id, fecha, hora_inicio, hora_fi
   ((SELECT id FROM laboratorio WHERE codigo = 'AUDITORIO'), (SELECT id FROM usuario WHERE codigo = '3334'), '2026-12-01', '07:00:00', '09:15:00', 'EXAMEN', 'Sistemas de información II', 'APROBADA', (SELECT id FROM usuario WHERE codigo = '01'), NULL),
   ((SELECT id FROM laboratorio WHERE codigo = 'AUDITORIO'), (SELECT id FROM usuario WHERE codigo = '3334'), '2026-12-02', '07:00:00', '08:30:00', 'EXAMEN', 'Ingeniería de requisitos', 'PENDIENTE', NULL, 'Obs: examen teórico, Aula para intercambio (23)'),
   ((SELECT id FROM laboratorio WHERE codigo = 'LAB-46'), (SELECT id FROM usuario WHERE codigo = '4047'), '2026-12-03', '16:00:00', '18:15:00', 'EXAMEN', 'Exámenes y revisión de proyecto (Estructura de datos 2 -sb)', 'PENDIENTE', NULL, 'Obs: Evaluación'),
-  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-43'), (SELECT id FROM usuario WHERE codigo = '29405'), '2026-12-10', '14:00:00', '16:00:00', 'EXAMEN', 'Examen final de Metodologia', 'PENDIENTE', NULL, NULL);
+  ((SELECT id FROM laboratorio WHERE codigo = 'LAB-43'), (SELECT id FROM usuario WHERE codigo = '29405'), '2026-12-10', '14:00:00', '16:00:00', 'EXAMEN', 'Auxiliatura de Metodologia', 'PENDIENTE', NULL, 'Se necesita 1 auxiliar de apoyo');
 
 -- SCRIPT DML: INSERTS DE NOTIFICACIONES (DATOS REALES)
 INSERT INTO notificacion (usuario_id, asunto, cuerpo, reserva_id, enviado_en) VALUES
