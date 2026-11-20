@@ -23,6 +23,11 @@ public class TurnoDAO extends BaseDAO {
         return consultarUno(SELECT_BASE + "WHERE t.id = ?", id);
     }
 
+    public Fila buscarPorAuxiliarYDia(int semestreId, int auxiliarId, int dia) throws SQLException {
+        return consultarUno(SELECT_BASE + "WHERE t.semestre_id = ? AND t.auxiliar_id = ? AND t.dia_semana = ? LIMIT 1",
+                semestreId, auxiliarId, dia);
+    }
+
     /** Turno propio del auxiliar que se superpone en ese día. */
     public Fila choqueAuxiliar(int semestreId, int auxiliarId, int dia, LocalTime inicio, LocalTime fin)
             throws SQLException {

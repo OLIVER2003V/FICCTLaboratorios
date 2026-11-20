@@ -51,24 +51,37 @@ public class PermutaController {
         manejadores.put("LISMSJ", this::listarMensajes);
     }
 
-    // SOLPMT["15","2026-11-09","219010"]  (id del turno, fecha, código o correo del reemplazante)
+    // SOLPMT["69","2026-11-26","26693"]  (id o código del turno, fecha, código o correo del reemplazante)
     public Resultado solicitar(Comando c, Usuario u) throws NegocioException, SQLException {
         c.exigirParametros(3, "SOLPMT[\"id_turno\",\"fecha\",\"reemplazante\"] (vea sus turnos con LISTUR[\"*\"])");
         Fila sem = buscar.semestreActivo();
-        Fila turno = turnoDAO.buscarPorId(Validar.id(c.param(0), "el turno"));
-        if (turno == null || turno.entero("semestre_id") != sem.entero("id") || turno.entero("auxiliar_id") != u.getId()) {
-            throw new NegocioException("El turno #" + c.param(0) + " no es uno de sus turnos del semestre activo. "
-                    + "Vea sus turnos con LISTUR[\"*\"].");
-        }
         LocalDate fecha = Validar.fecha(c.param(1), "fecha");
         if (!fecha.isAfter(LocalDate.now())) {
             throw new NegocioException("La permuta debe ser para una fecha futura.");
         }
         buscar.fechaEnSemestre(sem, fecha);
+        int diaFecha = fecha.getDayOfWeek().getValue();
+
+        Fila turno = null;
+        try {
+            int posibleId = Integer.parseInt(c.param(0).trim());
+            turno = turnoDAO.buscarPorId(posibleId);
+        } catch (NumberFormatException ignored) {}
+
+        // Si pasó su código (ej. 29405) o "*" o el ID directo no pertenecía al usuario, buscar su turno de ese día
+        if (turno == null || turno.entero("semestre_id") != sem.entero("id") || turno.entero("auxiliar_id") != u.getId()) {
+            turno = turnoDAO.buscarPorAuxiliarYDia(sem.entero("id"), u.getId(), diaFecha);
+        }
+
+        if (turno == null || turno.entero("auxiliar_id") != u.getId()) {
+            throw new NegocioException("Usted no tiene un turno asignado el día " + Formato.dia(diaFecha) + " (" + fecha + "). "
+                    + "Vea sus turnos con LISTUR[\"*\"].");
+        }
+
         int dia = turno.entero("dia_semana");
-        if (fecha.getDayOfWeek().getValue() != dia) {
+        if (diaFecha != dia) {
             throw new NegocioException("El turno #" + turno.texto("id") + " es los " + Formato.dia(dia) + " y el " + fecha
-                    + " es " + Formato.dia(fecha.getDayOfWeek().getValue()) + ".");
+                    + " es " + Formato.dia(diaFecha) + ".");
         }
         Usuario reemplazante = buscar.usuarioActivoConRol(c.param(2), "AUX", "auxiliar");
         if (reemplazante.getId() == u.getId()) {

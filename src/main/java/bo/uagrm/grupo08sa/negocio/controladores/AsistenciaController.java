@@ -44,7 +44,7 @@ public class AsistenciaController {
     public static final int ANTICIPACION_MIN = 15;
     public static final int TOLERANCIA_PUNTUAL_MIN = 10;
     public static final int TOLERANCIA_FALTA_MIN = 30;
-    private static final String[] COLUMNAS_TURNO = {"ID", "Auxiliar", "Día", "Inicio", "Fin", "Lab"};
+    private static final String[] COLUMNAS_TURNO = {"Código", "Auxiliar", "Día", "Inicio", "Fin", "Lab"};
     private static final String[] COLUMNAS_ASISTENCIA =
             {"Fecha", "Auxiliar", "Turno", "Lab", "Entrada", "Salida", "Estado"};
 
