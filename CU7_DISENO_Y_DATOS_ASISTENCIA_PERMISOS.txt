@@ -1,0 +1,244 @@
+================================================================================
+          SISTEMA DE GESTION DE LABORATORIOS FICCT - GRUPO 08 SA
+ CASO DE USO 7 (CU7): GESTION DE SUPERVISION Y ASISTENCIA DE AUXILIARES
+================================================================================
+
+--------------------------------------------------------------------------------
+1. DISENO LOGICO (MODELO CONCEPTUAL / RELACIONAL)
+--------------------------------------------------------------------------------
+El modulo de Supervision y Asistencia de Auxiliares de Laboratorio (CU7) gestiona el
+control biometrico/digital de ingreso y salida diaria de los auxiliares a sus turnos
+semanales obligatorios, la clasificacion automatica de puntualidad, el registro formal
+de licencias o permisos justificados emitidos por el Encargado, y la ejecucion programada
+de control de inasistencias (faltas automaticas pasados 30 minutos del inicio de turno).
+
+A. ENTIDADES Y DEFINICION LOGICA:
+  * ASISTENCIA (id, turno_id, auxiliar_id, fecha, hora_entrada, hora_salida, estado)
+    Registro diario individual de asistencia asociado a un turno base.
+    Valores de estado: PUNTUAL, ATRASO, FALTA, PERMISO.
+    Regla de unicidad: Un unico registro por turno y por fecha (UNIQUE turno_id, fecha).
+
+  * PERMISO (id, auxiliar_id, fecha, motivo, registrado_por)
+    Autorizacion formal otorgada por el Encargado a un auxiliar para ausentarse en una fecha dada.
+    Justifica inasistencias convirtiendo automaticamente 'FALTA' en 'PERMISO'.
+
+B. RELACIONES Y CARDINALIDADES:
+  * TURNO (1) ──── (N) ASISTENCIA
+    Cada marca de asistencia corresponde a un turno previamente programado ('turno_id').
+  * USUARIO [AUXILIAR] (1) ──── (N) ASISTENCIA
+    El auxiliar que cumple o debe cumplir la labor en el laboratorio ('auxiliar_id').
+    En caso de permuta aprobada (CU5), 'auxiliar_id' registra formalmente al reemplazante.
+  * USUARIO [AUXILIAR] (1) ──── (N) PERMISO
+    El auxiliar beneficiario de la justificacion o permiso academico/medico ('auxiliar_id').
+  * USUARIO [ENCARGADO] (1) ──── (N) PERMISO
+    El Encargado facultativo responsable que autoriza y sella el permiso ('registrado_por').
+
+C. REGLAS DE NEGOCIO E INTEGRIDAD:
+  1. Ventana de Marcacion de Entrada (MARENT):
+     * Anticipacion permitida: hasta 15 minutos antes del inicio del turno.
+     * PUNTUAL: Marcacion desde 15 minutos antes hasta 10 minutos posteriores a la hora de inicio.
+     * ATRASO: Marcacion entre 11 y 30 minutos posteriores a la hora de inicio.
+     * FALTA / PERMISO: Pasados 30 minutos sin marcacion, la tarea automatica registra FALTA.
+       Si el auxiliar contaba con permiso registrado en la tabla 'permiso', se registra PERMISO.
+  2. Marcacion de Salida (MARSAL):
+     * Requiere obligatoriamente una entrada abierta sin salida en el dia.
+     * Alerta al usuario si registra una salida anticipada respecto al fin del turno.
+  3. Justificacion Retroactiva (INSPMS):
+     * Cuando el Encargado registra un permiso para una fecha pasada o en curso, el sistema
+       actualiza de forma automatica e inmediata cualquier FALTA registrada ese dia a 'PERMISO'.
+  4. Unicidad de Asistencia: No se permiten duplicados de asistencia para el mismo turno y dia.
+
+--------------------------------------------------------------------------------
+2. DISENO FISICO (DICCIONARIO DE DATOS EN POSTGRESQL)
+--------------------------------------------------------------------------------
+
+TABLA: asistencia
++----------------+--------------+----------+---------------------------------------------------+
+| Columna        | Tipo         | Nulo     | Descripcion / Observacion                         |
++----------------+--------------+----------+---------------------------------------------------+
+| id             | INTEGER      | NOT NULL | Clave primaria ( SERIAL )                         |
+| turno_id       | INTEGER      | NOT NULL | Clave foranea referencia a turno(id)              |
+| auxiliar_id    | INTEGER      | NOT NULL | Clave foranea referencia a usuario(id)            |
+| fecha          | DATE         | NOT NULL | Fecha calendario de la sesion de asistencia       |
+| hora_entrada   | TIME         | Nulo     | Hora exacta de registro de ingreso (MARENT)       |
+| hora_salida    | TIME         | Nulo     | Hora exacta de registro de egreso (MARSAL)        |
+| estado         | VARCHAR(10)  | NOT NULL | PUNTUAL, ATRASO, FALTA, PERMISO                   |
++----------------+--------------+----------+---------------------------------------------------+
+  * Restriccion UNIQUE: (turno_id, fecha)
+  * Restriccion CHECK: estado IN ('PUNTUAL','ATRASO','FALTA','PERMISO')
+
+TABLA: permiso
++----------------+--------------+----------+---------------------------------------------------+
+| Columna        | Tipo         | Nulo     | Descripcion / Observacion                         |
++----------------+--------------+----------+---------------------------------------------------+
+| id             | INTEGER      | NOT NULL | Clave primaria ( SERIAL )                         |
+| auxiliar_id    | INTEGER      | NOT NULL | Clave foranea referencia a usuario(id) [AUX]      |
+| fecha          | DATE         | NOT NULL | Fecha autorizada de ausencia o permiso            |
+| motivo         | VARCHAR(200) | NOT NULL | Causa justificada (examen, salud, comision, etc.) |
+| registrado_por | INTEGER      | NOT NULL | Clave foranea referencia a usuario(id) [ENC]      |
++----------------+--------------+----------+---------------------------------------------------+
+
+--------------------------------------------------------------------------------
+3. TABLAS RELLENAS CON DATOS REALES DE LA BASE DE DATOS
+--------------------------------------------------------------------------------
+
+A. DATOS DE LA TABLA: asistencia (Marcaciones reales de auxiliares)
++----+----------+------------+------------+---------------+-------------------------------------+----------+----------+----------+
+| id | turno_id | lab        | fecha      | aux_codigo    | auxiliar_nombre                     | entrada  | salida   | estado   |
++----+----------+------------+------------+---------------+-------------------------------------+----------+----------+----------+
+| 1  | 152      | LAB-45     | 2026-11-17 | 26693         | Alicia Rivas Romana                 | -        | -        | FALTA    |
+| 2  | 157      | LAB-41     | 2026-11-17 | 26700         | Diego Rodrigo Ybarra Velasquez      | -        | -        | FALTA    |
+| 3  | 167      | LAB-44     | 2026-11-17 | 29534         | Jose Carlo Fernandez Rodas          | -        | -        | FALTA    |
+| 4  | 162      | LAB-43     | 2026-11-17 | 29532         | Freddy Andre Padilla Mina           | -        | -        | FALTA    |
+| 5  | 172      | LAB-43     | 2026-11-17 | 29529         | Camila Adriana Galviz Aramayo       | -        | -        | FALTA    |
+| 6  | 187      | LAB-41     | 2026-11-17 | 29531         | Nicolas Junior Verduguez Teran      | -        | -        | FALTA    |
+| 7  | 177      | LAB-43     | 2026-11-17 | 29528         | Gabriel Andres Lopez Franco         | -        | -        | FALTA    |
+| 8  | 182      | LAB-41     | 2026-11-17 | 29396         | Cesar Alejandro Caballero Caballero | -        | -        | FALTA    |
+| 9  | 207      | LAB-41     | 2026-11-17 | 29395         | Carlos Leonel Barrios Mayorga       | -        | -        | FALTA    |
+| 10 | 197      | LAB-44     | 2026-11-17 | 28081         | Nataly Vanessa Martinez Martinez    | -        | -        | FALTA    |
+| 11 | 202      | LAB-45     | 2026-11-17 | 28087         | Gilmer Luis Torrico Maquera         | -        | -        | FALTA    |
+| 12 | 192      | LAB-46     | 2026-11-17 | 29406         | Arnulfo Velasquez Paz               | -        | -        | FALTA    |
+| 13 | 153      | LAB-45     | 2026-11-18 | 26693         | Alicia Rivas Romana                 | -        | -        | FALTA    |
+| 14 | 158      | LAB-41     | 2026-11-18 | 26700         | Diego Rodrigo Ybarra Velasquez      | -        | -        | FALTA    |
+| 15 | 168      | LAB-44     | 2026-11-18 | 29534         | Jose Carlo Fernandez Rodas          | -        | -        | PERMISO  |
+| 16 | 163      | LAB-43     | 2026-11-18 | 29532         | Freddy Andre Padilla Mina           | -        | -        | FALTA    |
+| 17 | 173      | LAB-43     | 2026-11-18 | 29529         | Camila Adriana Galviz Aramayo       | -        | -        | FALTA    |
+| 18 | 188      | LAB-41     | 2026-11-18 | 29531         | Nicolas Junior Verduguez Teran      | -        | -        | FALTA    |
+| 19 | 178      | LAB-43     | 2026-11-18 | 29528         | Gabriel Andres Lopez Franco         | -        | -        | FALTA    |
+| 20 | 183      | LAB-41     | 2026-11-18 | 29396         | Cesar Alejandro Caballero Caballero | -        | -        | FALTA    |
+| 21 | 208      | LAB-41     | 2026-11-18 | 29395         | Carlos Leonel Barrios Mayorga       | -        | -        | FALTA    |
+| 22 | 198      | LAB-44     | 2026-11-18 | 28081         | Nataly Vanessa Martinez Martinez    | -        | -        | FALTA    |
+| 23 | 203      | LAB-45     | 2026-11-18 | 28087         | Gilmer Luis Torrico Maquera         | -        | -        | FALTA    |
+| 24 | 193      | LAB-46     | 2026-11-18 | 29406         | Arnulfo Velasquez Paz               | -        | -        | FALTA    |
+| 25 | 218      | LAB-43     | 2026-11-18 | 29405         | Jairo Sanabria Ortega               | -        | -        | FALTA    |
+| 26 | 223      | LAB-41     | 2026-11-18 | 28207         | Benjamin Condori Vasquez            | -        | -        | FALTA    |
+| 27 | 213      | LAB-45     | 2026-11-18 | 26150         | Edmundo Junior Zenteno Rojas        | -        | -        | FALTA    |
+| 28 | 154      | LAB-45     | 2026-11-19 | 26693         | Alicia Rivas Romana                 | -        | -        | FALTA    |
+| 29 | 159      | LAB-41     | 2026-11-19 | 26700         | Diego Rodrigo Ybarra Velasquez      | -        | -        | FALTA    |
+| 30 | 169      | LAB-44     | 2026-11-19 | 29534         | Jose Carlo Fernandez Rodas          | -        | -        | FALTA    |
+| 31 | 164      | LAB-43     | 2026-11-19 | 29532         | Freddy Andre Padilla Mina           | -        | -        | FALTA    |
+| 32 | 174      | LAB-43     | 2026-11-19 | 29529         | Camila Adriana Galviz Aramayo       | -        | -        | FALTA    |
+| 33 | 189      | LAB-41     | 2026-11-19 | 29531         | Nicolas Junior Verduguez Teran      | -        | -        | FALTA    |
+| 34 | 179      | LAB-43     | 2026-11-19 | 29528         | Gabriel Andres Lopez Franco         | -        | -        | FALTA    |
+| 35 | 184      | LAB-41     | 2026-11-19 | 29396         | Cesar Alejandro Caballero Caballero | -        | -        | FALTA    |
+| 36 | 209      | LAB-41     | 2026-11-19 | 29395         | Carlos Leonel Barrios Mayorga       | -        | -        | FALTA    |
+| 37 | 199      | LAB-44     | 2026-11-19 | 28081         | Nataly Vanessa Martinez Martinez    | -        | -        | FALTA    |
+| 38 | 204      | LAB-45     | 2026-11-19 | 28087         | Gilmer Luis Torrico Maquera         | -        | -        | FALTA    |
+| 39 | 194      | LAB-46     | 2026-11-19 | 29406         | Arnulfo Velasquez Paz               | -        | -        | PERMISO  |
+| 40 | 219      | LAB-43     | 2026-11-19 | 29405         | Jairo Sanabria Ortega               | -        | -        | FALTA    |
+| 41 | 224      | LAB-41     | 2026-11-19 | 28207         | Benjamin Condori Vasquez            | -        | -        | FALTA    |
+| 42 | 214      | LAB-45     | 2026-11-19 | 26150         | Edmundo Junior Zenteno Rojas        | -        | -        | FALTA    |
++----+----------+------------+------------+---------------+-------------------------------------+----------+----------+----------+
+  (Total: 42 registros reales en base de datos - estados PUNTUAL, ATRASO, FALTA y PERMISO)
+
+B. DATOS DE LA TABLA: permiso (Licencias y justificaciones otorgadas por el Encargado)
++----+---------------+-------------------------------------+------------+------------------------------------------------------------+-----------------------+
+| id | aux_codigo    | auxiliar_nombre                     | fecha      | motivo                                                     | registrado_por        |
++----+---------------+-------------------------------------+------------+------------------------------------------------------------+-----------------------+
+| 1  | 29406         | Arnulfo Velasquez Paz               | 2026-11-19 | de viaje                                                   | Luis Enrique Higue... |
+| 2  | 29395         | Carlos Leonel Barrios Mayorga       | 2026-09-15 | Examen parcial de Sistemas Operativos I                    | Oliver Ventura Val... |
+| 3  | 29396         | Cesar Alejandro Caballero Caballero | 2026-09-22 | Defensa de proyecto de Redes de Computadoras II            | Oliver Ventura Val... |
+| 4  | 29397         | Christian Alexander Carrion Ojeda   | 2026-10-02 | Trámite médico en Seguro Universitario                     | Oliver Ventura Val... |
+| 5  | 28204         | Eliezer Chavez Salas                | 2026-10-14 | Representación estudiantil en Congreso Facultativo         | Oliver Ventura Val... |
+| 6  | 28207         | Benjamin Condori Vasquez            | 2026-10-23 | Examen final de Base de Datos II                           | Oliver Ventura Val... |
+| 7  | 29398         | Fernando Daniel Cossio Aranda       | 2026-11-04 | Atención médica odontológica programada                    | Oliver Ventura Val... |
+| 8  | 28210         | Juliano Rodrigo Eguez Montero       | 2026-11-09 | Defensa de perfil de modalidad de graduación               | Oliver Ventura Val... |
+| 9  | 29399         | Raul Farell Vaca                    | 2026-11-12 | Examen de mesa de Inteligencia Artificial                  | Oliver Ventura Val... |
+| 10 | 29400         | Luis Miguel Fernandez Beltran       | 2026-11-16 | Comisión académica de acreditación FICCT                   | Oliver Ventura Val... |
+| 11 | 29534         | Jose Carlo Fernandez Rodas          | 2026-11-18 | Participación en Feria Científica y Tecnológica            | Oliver Ventura Val... |
+| 12 | 29529         | Camila Adriana Galviz Aramayo       | 2026-11-20 | Trámite de convalidación académica en DUGI                 | Oliver Ventura Val... |
+| 13 | 29533         | Jose Carlos Giron Solano            | 2026-11-21 | Examen parcial de Arquitectura del Computador              | Oliver Ventura Val... |
+| 14 | 24307         | Shirley Angie Gutierrez Ortega      | 2026-11-24 | Evaluación final de Taller de Grado I                      | Oliver Ventura Val... |
+| 15 | 29401         | Mauro Boris Gutierrez Primintela    | 2026-11-25 | Asistencia a taller especializado de Ciberseguridad        | Oliver Ventura Val... |
+| 16 | 29528         | Gabriel Andres Lopez Franco         | 2026-11-26 | Examen parcial de Sistemas Operativos I                    | Oliver Ventura Val... |
++----+---------------+-------------------------------------+------------+------------------------------------------------------------+-----------------------+
+  (Total: 16 registros reales de permisos otorgados en base de datos)
+
+--------------------------------------------------------------------------------
+4. SCRIPT SQL COMPLETO (DDL Y DML)
+--------------------------------------------------------------------------------
+-- SCRIPT DDL: CREACION DE TABLAS (CU7)
+CREATE TABLE asistencia (
+  id           SERIAL PRIMARY KEY,
+  turno_id     INT  NOT NULL REFERENCES turno(id),
+  auxiliar_id  INT  NOT NULL REFERENCES usuario(id),
+  fecha        DATE NOT NULL,
+  hora_entrada TIME,
+  hora_salida  TIME,
+  estado       VARCHAR(10) NOT NULL
+               CHECK (estado IN ('PUNTUAL','ATRASO','FALTA','PERMISO')),
+  UNIQUE (turno_id, fecha)
+);
+
+CREATE TABLE permiso (
+  id             SERIAL PRIMARY KEY,
+  auxiliar_id    INT  NOT NULL REFERENCES usuario(id),
+  fecha          DATE NOT NULL,
+  motivo         VARCHAR(200) NOT NULL,
+  registrado_por INT  NOT NULL REFERENCES usuario(id)
+);
+
+-- SCRIPT DML: INSERTS DE ASISTENCIA (DATOS REALES)
+INSERT INTO asistencia (turno_id, auxiliar_id, fecha, hora_entrada, hora_salida, estado) VALUES
+  (152, (SELECT id FROM usuario WHERE codigo = '26693'), '2026-11-17', NULL, NULL, 'FALTA'),
+  (157, (SELECT id FROM usuario WHERE codigo = '26700'), '2026-11-17', NULL, NULL, 'FALTA'),
+  (167, (SELECT id FROM usuario WHERE codigo = '29534'), '2026-11-17', NULL, NULL, 'FALTA'),
+  (162, (SELECT id FROM usuario WHERE codigo = '29532'), '2026-11-17', NULL, NULL, 'FALTA'),
+  (172, (SELECT id FROM usuario WHERE codigo = '29529'), '2026-11-17', NULL, NULL, 'FALTA'),
+  (187, (SELECT id FROM usuario WHERE codigo = '29531'), '2026-11-17', NULL, NULL, 'FALTA'),
+  (177, (SELECT id FROM usuario WHERE codigo = '29528'), '2026-11-17', NULL, NULL, 'FALTA'),
+  (182, (SELECT id FROM usuario WHERE codigo = '29396'), '2026-11-17', NULL, NULL, 'FALTA'),
+  (207, (SELECT id FROM usuario WHERE codigo = '29395'), '2026-11-17', NULL, NULL, 'FALTA'),
+  (197, (SELECT id FROM usuario WHERE codigo = '28081'), '2026-11-17', NULL, NULL, 'FALTA'),
+  (202, (SELECT id FROM usuario WHERE codigo = '28087'), '2026-11-17', NULL, NULL, 'FALTA'),
+  (192, (SELECT id FROM usuario WHERE codigo = '29406'), '2026-11-17', NULL, NULL, 'FALTA'),
+  (153, (SELECT id FROM usuario WHERE codigo = '26693'), '2026-11-18', NULL, NULL, 'FALTA'),
+  (158, (SELECT id FROM usuario WHERE codigo = '26700'), '2026-11-18', NULL, NULL, 'FALTA'),
+  (168, (SELECT id FROM usuario WHERE codigo = '29534'), '2026-11-18', NULL, NULL, 'PERMISO'),
+  (163, (SELECT id FROM usuario WHERE codigo = '29532'), '2026-11-18', NULL, NULL, 'FALTA'),
+  (173, (SELECT id FROM usuario WHERE codigo = '29529'), '2026-11-18', NULL, NULL, 'FALTA'),
+  (188, (SELECT id FROM usuario WHERE codigo = '29531'), '2026-11-18', NULL, NULL, 'FALTA'),
+  (178, (SELECT id FROM usuario WHERE codigo = '29528'), '2026-11-18', NULL, NULL, 'FALTA'),
+  (183, (SELECT id FROM usuario WHERE codigo = '29396'), '2026-11-18', NULL, NULL, 'FALTA'),
+  (208, (SELECT id FROM usuario WHERE codigo = '29395'), '2026-11-18', NULL, NULL, 'FALTA'),
+  (198, (SELECT id FROM usuario WHERE codigo = '28081'), '2026-11-18', NULL, NULL, 'FALTA'),
+  (203, (SELECT id FROM usuario WHERE codigo = '28087'), '2026-11-18', NULL, NULL, 'FALTA'),
+  (193, (SELECT id FROM usuario WHERE codigo = '29406'), '2026-11-18', NULL, NULL, 'FALTA'),
+  (218, (SELECT id FROM usuario WHERE codigo = '29405'), '2026-11-18', NULL, NULL, 'FALTA'),
+  (223, (SELECT id FROM usuario WHERE codigo = '28207'), '2026-11-18', NULL, NULL, 'FALTA'),
+  (213, (SELECT id FROM usuario WHERE codigo = '26150'), '2026-11-18', NULL, NULL, 'FALTA'),
+  (154, (SELECT id FROM usuario WHERE codigo = '26693'), '2026-11-19', NULL, NULL, 'FALTA'),
+  (159, (SELECT id FROM usuario WHERE codigo = '26700'), '2026-11-19', NULL, NULL, 'FALTA'),
+  (169, (SELECT id FROM usuario WHERE codigo = '29534'), '2026-11-19', NULL, NULL, 'FALTA'),
+  (164, (SELECT id FROM usuario WHERE codigo = '29532'), '2026-11-19', NULL, NULL, 'FALTA'),
+  (174, (SELECT id FROM usuario WHERE codigo = '29529'), '2026-11-19', NULL, NULL, 'FALTA'),
+  (189, (SELECT id FROM usuario WHERE codigo = '29531'), '2026-11-19', NULL, NULL, 'FALTA'),
+  (179, (SELECT id FROM usuario WHERE codigo = '29528'), '2026-11-19', NULL, NULL, 'FALTA'),
+  (184, (SELECT id FROM usuario WHERE codigo = '29396'), '2026-11-19', NULL, NULL, 'FALTA'),
+  (209, (SELECT id FROM usuario WHERE codigo = '29395'), '2026-11-19', NULL, NULL, 'FALTA'),
+  (199, (SELECT id FROM usuario WHERE codigo = '28081'), '2026-11-19', NULL, NULL, 'FALTA'),
+  (204, (SELECT id FROM usuario WHERE codigo = '28087'), '2026-11-19', NULL, NULL, 'FALTA'),
+  (194, (SELECT id FROM usuario WHERE codigo = '29406'), '2026-11-19', NULL, NULL, 'PERMISO'),
+  (219, (SELECT id FROM usuario WHERE codigo = '29405'), '2026-11-19', NULL, NULL, 'FALTA'),
+  (224, (SELECT id FROM usuario WHERE codigo = '28207'), '2026-11-19', NULL, NULL, 'FALTA'),
+  (214, (SELECT id FROM usuario WHERE codigo = '26150'), '2026-11-19', NULL, NULL, 'FALTA');
+
+-- SCRIPT DML: INSERTS DE PERMISOS (DATOS REALES)
+INSERT INTO permiso (auxiliar_id, fecha, motivo, registrado_por) VALUES
+  ((SELECT id FROM usuario WHERE codigo = '29406'), '2026-11-19', 'de viaje', (SELECT id FROM usuario WHERE codigo = '01')),
+  ((SELECT id FROM usuario WHERE codigo = '29395'), '2026-09-15', 'Examen parcial de Sistemas Operativos I', (SELECT id FROM usuario WHERE codigo = '222058730')),
+  ((SELECT id FROM usuario WHERE codigo = '29396'), '2026-09-22', 'Defensa de proyecto de Redes de Computadoras II', (SELECT id FROM usuario WHERE codigo = '222058730')),
+  ((SELECT id FROM usuario WHERE codigo = '29397'), '2026-10-02', 'Trámite médico en Seguro Universitario', (SELECT id FROM usuario WHERE codigo = '222058730')),
+  ((SELECT id FROM usuario WHERE codigo = '28204'), '2026-10-14', 'Representación estudiantil en Congreso Facultativo', (SELECT id FROM usuario WHERE codigo = '222058730')),
+  ((SELECT id FROM usuario WHERE codigo = '28207'), '2026-10-23', 'Examen final de Base de Datos II', (SELECT id FROM usuario WHERE codigo = '222058730')),
+  ((SELECT id FROM usuario WHERE codigo = '29398'), '2026-11-04', 'Atención médica odontológica programada', (SELECT id FROM usuario WHERE codigo = '222058730')),
+  ((SELECT id FROM usuario WHERE codigo = '28210'), '2026-11-09', 'Defensa de perfil de modalidad de graduación', (SELECT id FROM usuario WHERE codigo = '222058730')),
+  ((SELECT id FROM usuario WHERE codigo = '29399'), '2026-11-12', 'Examen de mesa de Inteligencia Artificial', (SELECT id FROM usuario WHERE codigo = '222058730')),
+  ((SELECT id FROM usuario WHERE codigo = '29400'), '2026-11-16', 'Comisión académica de acreditación FICCT', (SELECT id FROM usuario WHERE codigo = '222058730')),
+  ((SELECT id FROM usuario WHERE codigo = '29534'), '2026-11-18', 'Participación en Feria Científica y Tecnológica', (SELECT id FROM usuario WHERE codigo = '222058730')),
+  ((SELECT id FROM usuario WHERE codigo = '29529'), '2026-11-20', 'Trámite de convalidación académica en DUGI', (SELECT id FROM usuario WHERE codigo = '222058730')),
+  ((SELECT id FROM usuario WHERE codigo = '29533'), '2026-11-21', 'Examen parcial de Arquitectura del Computador', (SELECT id FROM usuario WHERE codigo = '222058730')),
+  ((SELECT id FROM usuario WHERE codigo = '24307'), '2026-11-24', 'Evaluación final de Taller de Grado I', (SELECT id FROM usuario WHERE codigo = '222058730')),
+  ((SELECT id FROM usuario WHERE codigo = '29401'), '2026-11-25', 'Asistencia a taller especializado de Ciberseguridad', (SELECT id FROM usuario WHERE codigo = '222058730')),
+  ((SELECT id FROM usuario WHERE codigo = '29528'), '2026-11-26', 'Examen parcial de Sistemas Operativos I', (SELECT id FROM usuario WHERE codigo = '222058730'));
+
