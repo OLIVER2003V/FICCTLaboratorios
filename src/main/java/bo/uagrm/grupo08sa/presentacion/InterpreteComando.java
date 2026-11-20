@@ -12,6 +12,8 @@ import java.util.regex.Pattern;
 /**
  * Convierte el asunto del correo en un Comando.
  * Formato: COMANDO["p1","p2",...]; sin parámetros: COMANDO["*"].
+ * Dentro de un parámetro, \" representa una comilla doble y \\ una barra invertida:
+ * INSOBJ["LAB-41","Mochila \"Nike\" negra"] → descripción: Mochila "Nike" negra
  */
 public final class InterpreteComando {
 
@@ -63,12 +65,29 @@ public final class InterpreteComando {
                 throw new FormatoInvalidoException("Cada parámetro debe ir entre comillas dobles: '" + asunto + "'."
                         + AYUDA_FORMATO);
             }
-            int cierre = interior.indexOf('"', i + 1);
-            if (cierre < 0) {
+            // Recorre hasta la comilla de cierre. \" es una comilla dentro del parámetro y \\ una barra invertida;
+            // cualquier otra barra se conserva tal cual.
+            StringBuilder valor = new StringBuilder();
+            int j = i + 1;
+            boolean cerrado = false;
+            while (j < n) {
+                char ch = interior.charAt(j);
+                if (ch == '\\' && j + 1 < n && (interior.charAt(j + 1) == '"' || interior.charAt(j + 1) == '\\')) {
+                    valor.append(interior.charAt(j + 1));
+                    j += 2;
+                } else if (ch == '"') {
+                    cerrado = true;
+                    break;
+                } else {
+                    valor.append(ch);
+                    j++;
+                }
+            }
+            if (!cerrado) {
                 throw new FormatoInvalidoException("Falta cerrar una comilla en '" + asunto + "'." + AYUDA_FORMATO);
             }
-            parametros.add(interior.substring(i + 1, cierre));
-            i = saltarEspacios(interior, cierre + 1);
+            parametros.add(valor.toString());
+            i = saltarEspacios(interior, j + 1);
             if (i == n) {
                 return parametros;
             }

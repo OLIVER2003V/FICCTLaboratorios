@@ -1,6 +1,7 @@
 target/
 salida/
 config.properties
+logs/
 .idea/
 .vscode/
 *.iml

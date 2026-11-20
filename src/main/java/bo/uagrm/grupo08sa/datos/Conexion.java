@@ -1,17 +1,22 @@
 package bo.uagrm.grupo08sa.datos;
 
 import bo.uagrm.grupo08sa.Config;
+import bo.uagrm.grupo08sa.Log;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.sql.Savepoint;
 
 /**
  * Conexión JDBC a db_grupo08sa.
  * Abrir una conexión al servidor remoto tarda 1-2 s, así que se mantiene una sola abierta y se reutiliza.
  * Los DAO siguen usando try-with-resources: close() sobre la conexión devuelta no la cierra de verdad.
+ *
+ * Transacciones: GestorComandos envuelve cada comando entre iniciarTransaccion() y confirmar()/revertir(),
+ * así un comando que escribe en varias tablas se guarda completo o no se guarda nada.
  */
 public final class Conexion {
 
@@ -20,11 +25,21 @@ public final class Conexion {
 
     private static Connection real;
     private static long ultimoUso;
+    /** true entre iniciarTransaccion() y confirmar()/revertir(): todos los DAO comparten esa transacción. */
+    private static boolean enTransaccion;
 
     private Conexion() {
     }
 
     public static synchronized Connection getConexion() throws SQLException {
+        if (enTransaccion) {
+            // Dentro de una transacción no se puede reconectar: se perderían los cambios ya hechos
+            if (real == null || real.isClosed()) {
+                throw new SQLException("Se perdió la conexión con la base de datos durante la transacción.");
+            }
+            ultimoUso = System.currentTimeMillis();
+            return envolver();
+        }
         long ahora = System.currentTimeMillis();
         boolean inactiva = ahora - ultimoUso > VALIDAR_TRAS_MS;
         ultimoUso = ahora;
@@ -32,8 +47,90 @@ public final class Conexion {
             cerrarSilencioso();
             real = conectarConFallback();
         }
-        // Cada DAO recibe la conexión en modo autocommit, aunque otro la haya cambiado
+        // Fuera de una transacción, cada DAO recibe la conexión en modo autocommit
         real.setAutoCommit(true);
+        return envolver();
+    }
+
+    // ---- Transacciones: un comando del correo = una transacción ----
+
+    /** BEGIN: desde aquí, todo lo que hagan los DAO se confirma o se revierte junto. */
+    public static synchronized void iniciarTransaccion() throws SQLException {
+        if (enTransaccion) {
+            throw new SQLException("Ya hay una transacción en curso.");
+        }
+        getConexion();  // asegura una conexión válida antes de empezar
+        real.setAutoCommit(false);
+        enTransaccion = true;
+    }
+
+    /** COMMIT y vuelta al modo autocommit. */
+    public static synchronized void confirmar() throws SQLException {
+        try {
+            real.commit();
+        } finally {
+            terminarTransaccion();
+        }
+    }
+
+    /** ROLLBACK y vuelta al modo autocommit. Nunca lanza: se usa al manejar otro error. */
+    public static synchronized void revertir() {
+        if (!enTransaccion) {
+            return;  // ya terminó (por ejemplo, falló el COMMIT y la transacción quedó cerrada)
+        }
+        try {
+            if (real != null && !real.isClosed()) {
+                real.rollback();
+            }
+        } catch (SQLException e) {
+            Log.error("No se pudo revertir la transacción", e);
+            cerrarSilencioso();  // la próxima operación abrirá una conexión nueva
+        } finally {
+            terminarTransaccion();
+        }
+    }
+
+    public static synchronized boolean hayTransaccion() {
+        return enTransaccion;
+    }
+
+    /**
+     * Ejecuta una operación secundaria (por ejemplo, guardar una notificación) dentro de un SAVEPOINT.
+     * En PostgreSQL, un error dentro de una transacción la invalida entera; el savepoint permite
+     * deshacer solo esa operación y seguir con la transacción principal.
+     */
+    public static void aislado(OperacionBD operacion) throws SQLException {
+        if (!hayTransaccion()) {
+            operacion.ejecutar();
+            return;
+        }
+        Savepoint punto = real.setSavepoint();
+        try {
+            operacion.ejecutar();
+            real.releaseSavepoint(punto);
+        } catch (SQLException | RuntimeException e) {
+            real.rollback(punto);
+            throw e;
+        }
+    }
+
+    @FunctionalInterface
+    public interface OperacionBD {
+        void ejecutar() throws SQLException;
+    }
+
+    private static void terminarTransaccion() {
+        enTransaccion = false;
+        try {
+            if (real != null && !real.isClosed()) {
+                real.setAutoCommit(true);
+            }
+        } catch (SQLException e) {
+            cerrarSilencioso();
+        }
+    }
+
+    private static Connection envolver() {
         return (Connection) Proxy.newProxyInstance(Connection.class.getClassLoader(),
                 new Class<?>[]{Connection.class}, (proxy, metodo, args) -> {
                     if (metodo.getName().equals("close")) {
@@ -71,13 +168,13 @@ public final class Conexion {
                 String urlConTimeout = url.contains("?") ? url + "&connectTimeout=4" : url + "?connectTimeout=4";
                 Connection c = DriverManager.getConnection(urlConTimeout, usuario, pass);
                 if (c != null && !c.isClosed()) {
-                    System.out.println("[BD] Conectado exitosamente con: " + url);
+                    Log.info("[BD] Conectado con: " + url);
                     return c;
                 }
             } catch (SQLException e) {
                 ultimoError = e;
                 String detalle = e.getCause() != null ? " (" + e.getCause().getClass().getSimpleName() + ": " + e.getCause().getMessage() + ")" : "";
-                System.err.println("[BD-PROBANDO] Falló " + url + " -> " + e.getMessage() + detalle);
+                Log.error("[BD] Falló la conexión con " + url + ": " + e.getMessage() + detalle);
                 String msg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
                 if (msg.contains("password") || msg.contains("autenticación") || msg.contains("authentication")) {
                     throw e;
@@ -86,7 +183,7 @@ public final class Conexion {
         }
         if (ultimoError != null) {
             String detalle = ultimoError.getCause() != null ? " (" + ultimoError.getCause().getMessage() + ")" : "";
-            System.err.println("[BD-DETALLE] Intento fallido de conexión a PostgreSQL: " + ultimoError.getMessage() + detalle);
+            Log.error("[BD] No se pudo conectar a PostgreSQL con ninguna dirección: " + ultimoError.getMessage() + detalle);
             throw ultimoError;
         }
         throw new SQLException("No se pudo establecer conexión a la base de datos.");

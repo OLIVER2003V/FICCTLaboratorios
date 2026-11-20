@@ -1,5 +1,7 @@
 package bo.uagrm.grupo08sa.negocio;
 
+import bo.uagrm.grupo08sa.Log;
+import bo.uagrm.grupo08sa.datos.Conexion;
 import bo.uagrm.grupo08sa.datos.dao.BitacoraDAO;
 import bo.uagrm.grupo08sa.datos.modelo.Usuario;
 import bo.uagrm.grupo08sa.negocio.controladores.AsistenciaController;
@@ -26,9 +28,10 @@ public class GestorComandos {
     private final BitacoraDAO bitacoraDAO = new BitacoraDAO();
     private final Map<String, Manejador> manejadores = new HashMap<>();
     private final AsistenciaController asistencia;
+    private final Notificaciones notificaciones;
 
     public GestorComandos(Notificador notificador) {
-        Notificaciones notificaciones = new Notificaciones(notificador);
+        notificaciones = new Notificaciones(notificador);
         asistencia = new AsistenciaController(notificaciones);
 
         new AyudaController().registrarEn(manejadores);
@@ -42,7 +45,18 @@ public class GestorComandos {
         new ReporteController().registrarEn(manejadores);                       // CU8
     }
 
+    /**
+     * Cada comando se ejecuta en una sola transacción: si termina bien se hace COMMIT; ante cualquier error
+     * (de negocio, de base de datos o inesperado) se hace ROLLBACK y no queda ningún cambio a medias.
+     * La bitácora se escribe después, fuera de la transacción, para que también queden los errores.
+     */
     public Resultado ejecutar(Comando comando) {
+        long inicio = System.currentTimeMillis();
+        try {
+            Conexion.iniciarTransaccion();
+        } catch (SQLException e) {
+            return errorBD(comando, e, inicio);
+        }
         try {
             Usuario solicitante = autorizador.autorizar(comando.getRemitente(), comando.getNombre());
             Manejador manejador = manejadores.get(comando.getNombre());
@@ -50,30 +64,57 @@ public class GestorComandos {
                 throw new NegocioException("El comando " + comando.getNombre() + " todavía no está implementado.");
             }
             Resultado resultado = manejador.ejecutar(comando, solicitante);
-            registrar(comando, "OK", resultado.getTitulo());
+            Conexion.confirmar();
+            notificaciones.enviarPendientes();
+            registrar(comando, "OK", resultado.getTitulo(), inicio);
             return resultado;
         } catch (AccesoDenegadoException e) {
-            registrar(comando, "DENEGADO", e.getMessage());
+            deshacer();
+            registrar(comando, "DENEGADO", e.getMessage(), inicio);
             return Resultado.error(e.getMessage());
         } catch (NegocioException e) {
-            registrar(comando, "ERROR", e.getMessage());
+            deshacer();
+            registrar(comando, "ERROR", e.getMessage(), inicio);
             return Resultado.error(e.getMessage());
         } catch (SQLException e) {
-            String detalle = e.getCause() != null ? " (" + e.getCause().getMessage() + ")" : "";
-            System.err.println("[BD] " + e.getMessage() + detalle);
-            registrar(comando, "ERROR", "BD: " + e.getMessage() + detalle);
-            return Resultado.error("Ocurrió un error en la base de datos al procesar " + comando.getNombre()
-                    + ". Intente nuevamente o consulte con el Encargado.");
+            deshacer();
+            return errorBD(comando, e, inicio);
+        } catch (RuntimeException e) {
+            deshacer();
+            Log.error("Error interno en " + comando.getNombre() + " de " + comando.getRemitente()
+                    + " " + Log.cita(comando.getAsunto()), e);
+            registrar(comando, "ERROR", "Interno: " + e, inicio);
+            return Resultado.error("Ocurrió un error interno al procesar " + comando.getNombre()
+                    + ". No se guardó ningún cambio.");
+        } finally {
+            // Red de seguridad (p. ej. ante un Error de la JVM): nunca dejar la transacción abierta
+            if (Conexion.hayTransaccion()) {
+                deshacer();
+            }
         }
+    }
+
+    private void deshacer() {
+        Conexion.revertir();
+        notificaciones.descartarPendientes();
+    }
+
+    private Resultado errorBD(Comando comando, SQLException e, long inicio) {
+        String detalle = e.getCause() != null ? " (" + e.getCause().getMessage() + ")" : "";
+        Log.error("Base de datos en " + comando.getNombre() + " de " + comando.getRemitente()
+                + " " + Log.cita(comando.getAsunto()), e);
+        registrar(comando, "ERROR", "BD: " + e.getMessage() + detalle, inicio);
+        return Resultado.error("Ocurrió un error en la base de datos al procesar " + comando.getNombre()
+                + ". No se guardó ningún cambio; intente nuevamente o consulte con el Encargado.");
     }
 
     /** Para asuntos que ni siquiera tienen el formato COMANDO["..."]. */
     public Resultado rechazarFormato(String remitente, String asunto, String detalle) {
+        Log.acceso("COMANDO", "de=" + remitente + " cmd=- resultado=FORMATO detalle=" + Log.cita(detalle));
         try {
             bitacoraDAO.insertar(remitente, null, asunto, "ERROR", detalle);
         } catch (SQLException e) {
-            String detalleErr = e.getCause() != null ? " (" + e.getCause().getMessage() + ")" : "";
-            System.err.println("[BITACORA] " + e.getMessage() + detalleErr);
+            Log.error("No se pudo registrar en la bitácora el asunto inválido de " + remitente, e);
         }
         return Resultado.error(detalle);
     }
@@ -83,15 +124,19 @@ public class GestorComandos {
         try {
             asistencia.marcarFaltas();
         } catch (SQLException e) {
-            System.err.println("[TAREAS] " + e.getMessage());
+            Log.error("Tarea automática: marcar faltas", e);
         }
     }
 
-    private void registrar(Comando comando, String resultado, String detalle) {
+    /** access.log + tabla bitacora. */
+    private void registrar(Comando comando, String resultado, String detalle, long inicio) {
+        Log.acceso("COMANDO", "de=" + comando.getRemitente() + " cmd=" + comando.getNombre()
+                + " params=" + comando.cantidad() + " resultado=" + resultado + " detalle=" + Log.cita(detalle)
+                + " (" + (System.currentTimeMillis() - inicio) + " ms)");
         try {
             bitacoraDAO.insertar(comando.getRemitente(), comando.getNombre(), comando.getAsunto(), resultado, detalle);
         } catch (SQLException e) {
-            System.err.println("[BITACORA] " + e.getMessage());
+            Log.error("No se pudo registrar en la bitácora el comando " + comando.getNombre(), e);
         }
     }
 }

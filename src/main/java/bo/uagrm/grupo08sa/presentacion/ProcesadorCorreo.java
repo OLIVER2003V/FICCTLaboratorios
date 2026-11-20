@@ -1,6 +1,7 @@
 package bo.uagrm.grupo08sa.presentacion;
 
 import bo.uagrm.grupo08sa.Config;
+import bo.uagrm.grupo08sa.Log;
 import bo.uagrm.grupo08sa.negocio.Adjunto;
 import bo.uagrm.grupo08sa.negocio.Comando;
 import bo.uagrm.grupo08sa.negocio.GestorComandos;
@@ -11,15 +12,11 @@ import bo.uagrm.grupo08sa.presentacion.correo.ClienteSMTP;
 import bo.uagrm.grupo08sa.presentacion.correo.CorreoEntrante;
 
 import java.io.IOException;
-import java.time.LocalTime;
-import java.time.format.DateTimeFormatter;
 
 /**
  * Orquesta el ciclo: leer buzón (POP3) → interpretar → negocio → responder (SMTP) → eliminar mensaje.
  */
 public class ProcesadorCorreo {
-
-    private static final DateTimeFormatter HORA = DateTimeFormatter.ofPattern("HH:mm:ss");
 
     private final ClienteSMTP smtp = crearClienteSMTP();
     private final GestorComandos gestor;
@@ -46,17 +43,17 @@ public class ProcesadorCorreo {
     /** Bucle principal: revisa el buzón cada N segundos hasta que se detenga el programa. */
     public void iniciar() {
         int intervalo = Config.getInt("intervalo.segundos");
-        log("Escuchando " + direccionPropia + " cada " + intervalo + " s. Ctrl+C para detener.");
+        Log.acceso("INICIO", "Escuchando " + direccionPropia + " cada " + intervalo + " s.");
         while (true) {
             try {
                 revisarBuzon();
             } catch (Throwable e) {
-                log("No se pudo revisar el buzón: " + e.getMessage());
+                Log.error("No se pudo revisar el buzón", e);
             }
             try {
                 gestor.ejecutarTareasProgramadas();
             } catch (Throwable e) {
-                log("Error en tareas automáticas: " + e.getMessage());
+                Log.error("Error en tareas automáticas", e);
             }
             try {
                 Thread.sleep(intervalo * 1000L);
@@ -77,7 +74,8 @@ public class ProcesadorCorreo {
                 try {
                     procesar(correo);
                 } catch (Throwable e) {
-                    log("Error inesperado con el mensaje " + i + ": " + e);
+                    Log.error("Error inesperado con el mensaje " + i + " de " + correo.getRemitente()
+                            + " " + Log.cita(correo.getAsunto()), e);
                 }
                 // Se elimina siempre, para no volver a procesar (ni responder) el mismo correo
                 pop3.eliminar(i);
@@ -92,23 +90,25 @@ public class ProcesadorCorreo {
     private void procesar(CorreoEntrante correo) {
         String remitente = correo.getRemitente();
         if (debeIgnorarse(remitente)) {
-            log("Ignorado (remitente automático o propio): " + remitente + " — " + correo.getAsunto());
+            Log.acceso("IGNORADO", "de=" + remitente + " asunto=" + Log.cita(correo.getAsunto())
+                    + " (remitente automático o propio)");
             return;
         }
         Adjunto adjunto = correo.getAdjuntos().isEmpty() ? null : correo.getAdjuntos().get(0);
-        log("Recibido de " + remitente + ": " + correo.getAsunto()
-                + (adjunto == null ? "" : " [adjunto: " + adjunto.nombre() + "]"));
+        Log.acceso("RECIBIDO", "de=" + remitente + " asunto=" + Log.cita(correo.getAsunto())
+                + (adjunto == null ? "" : " adjunto=" + Log.cita(adjunto.nombre())));
+        long inicio = System.currentTimeMillis();
         Resultado resultado = atender(remitente, correo.getAsunto(), adjunto);
         String html = RespuestaHTML.generar(resultado, correo.getAsunto());
         try {
             smtp.enviar(remitente, "Re: " + correo.getAsunto(), html);
-            log("  → respuesta enviada (" + (resultado.isExito() ? "éxito" : "error") + ")");
+            Log.acceso("RESPUESTA", "a=" + remitente + " tipo=" + (resultado.isExito() ? "EXITO" : "ERROR")
+                    + " estado=ENVIADA (" + (System.currentTimeMillis() - inicio) + " ms)");
         } catch (IOException e) {
-            log("  → no se pudo enviar la respuesta: " + e.getMessage());
-            if (e.getMessage().contains("Relaying denied")) {
-                log("    El servidor solo reenvía a otros dominios desde la red de la facultad: "
-                        + "ejecute el programa desde un laboratorio de la FICCT.");
-            }
+            Log.acceso("RESPUESTA", "a=" + remitente + " estado=FALLIDA");
+            String ayuda = e.getMessage() != null && e.getMessage().contains("Relaying denied")
+                    ? " (el servidor de tecnoweb solo reenvía a otros dominios desde IPs autorizadas)" : "";
+            Log.error("No se pudo enviar la respuesta a " + remitente + ayuda, e);
         }
     }
 
@@ -130,9 +130,5 @@ public class ProcesadorCorreo {
                 || remitente.startsWith("postmaster")
                 || remitente.startsWith("no-reply")
                 || remitente.startsWith("noreply");
-    }
-
-    static void log(String mensaje) {
-        System.out.println("[" + LocalTime.now().format(HORA) + "] " + mensaje);
     }
 }

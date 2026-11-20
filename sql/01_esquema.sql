@@ -263,7 +263,6 @@ INSERT INTO comando (nombre, descripcion) VALUES
  ('ENVMSJ','Enviar mensaje interno'), ('LISMSJ','Listar mensajes'),
  ('INSEQU','Registrar equipo'), ('MODEQU','Modificar equipo'),
  ('BAJEQU','Dar de baja equipo'), ('LISEQU','Listar inventario'),
- ('LISRED','Listar red e IPs (exclusivo Encargados)'),
  ('INSINC','Reportar incidencia'), ('MODINC','Actualizar incidencia'),
  ('LISINC','Listar incidencias'), ('INSOBJ','Registrar objeto encontrado'),
  ('ENTOBJ','Registrar entrega de objeto'), ('LISOBJ','Listar objetos encontrados'),

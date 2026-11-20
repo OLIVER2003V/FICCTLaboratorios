@@ -1,5 +1,6 @@
 package bo.uagrm.grupo08sa.presentacion;
 
+import bo.uagrm.grupo08sa.Log;
 import bo.uagrm.grupo08sa.negocio.Notificador;
 import bo.uagrm.grupo08sa.presentacion.correo.ClienteSMTP;
 
@@ -17,6 +18,6 @@ public class NotificadorCorreo implements Notificador {
     @Override
     public void enviar(String correo, String asunto, String mensaje) throws Exception {
         smtp.enviar(correo, "[Laboratorios FICCT] " + asunto, RespuestaHTML.notificacion(asunto, mensaje));
-        ProcesadorCorreo.log("  → notificación a " + correo + ": " + asunto);
+        Log.acceso("NOTIFICACION", "a=" + correo + " asunto=" + Log.cita(asunto));
     }
 }

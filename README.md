@@ -32,6 +32,137 @@ src/main/java/bo/uagrm/grupo08sa/
 Dependencias: presentación → negocio → datos. El negocio avisa a los usuarios mediante la interfaz `Notificador`,
 que implementa la presentación; así el negocio no depende de SMTP.
 
+**Transacciones:** `GestorComandos` ejecuta cada comando en una sola transacción (`Conexion.iniciarTransaccion` →
+`confirmar` / `revertir`). Si algo falla, nada queda a medias. Los correos de aviso se envían solo después del
+COMMIT y la bitácora se escribe fuera de la transacción, así también quedan registrados los errores.
+
+## Flujo del analizador de correos
+
+```mermaid
+flowchart TD
+    A([Cada 10 s: ProcesadorCorreo.iniciar]) --> B[POP3: conectar, STAT]
+    B --> C{¿Hay mensajes?}
+    C -- No --> T[Tareas automáticas: marcar faltas] --> Z([Esperar intervalo]) --> A
+    C -- Sí --> D[RETR n: CorreoEntrante<br/>decodifica asunto RFC 2047 / UTF-8 y adjuntos MIME]
+    D --> E{¿Remitente automático<br/>o el propio buzón?}
+    E -- Sí --> I[access.log: IGNORADO] --> X
+    E -- No --> F[access.log: RECIBIDO]
+    F --> G["InterpreteComando.analizar<br/>quita Re:/Fwd:, normaliza comillas, regex COMANDO[...]"]
+    G --> H{"¿Sintaxis válida?<br/>comillas, comas, \#quot; escapadas"}
+    H -- No --> HE[Resultado de ERROR de formato<br/>bitácora + access.log: FORMATO]
+    H -- Sí --> J[GestorComandos.ejecutar: BEGIN]
+    J --> K{Autorizador:<br/>¿usuario activo y su rol<br/>tiene el comando?}
+    K -- No --> KE[ROLLBACK · DENEGADO]
+    K -- Sí --> L[Controlador del CU<br/>Validar tipos → DAO con PreparedStatement]
+    L --> M{¿Error de negocio<br/>o de base de datos?}
+    M -- Sí --> ME[ROLLBACK · ERROR<br/>error.log con la traza]
+    M -- No --> N[COMMIT · enviar notificaciones · OK]
+    HE --> R
+    KE --> R
+    ME --> R
+    N --> R[bitácora + access.log: COMANDO]
+    R --> S[RespuestaHTML → SMTP al remitente<br/>access.log: RESPUESTA]
+    S --> X[DELE n: el correo no se vuelve a procesar]
+    X --> C
+```
+
+## Logs
+
+En la carpeta `logs/` (configurable con `log.directorio`):
+
+| Archivo | Contenido |
+|---|---|
+| `access.log` | Una línea por evento: `INICIO`, `RECIBIDO` (remitente, asunto, adjunto), `COMANDO` (comando, resultado `OK`/`ERROR`/`DENEGADO`/`FORMATO`, detalle y duración), `RESPUESTA` (enviada o fallida), `NOTIFICACION`, `IGNORADO` |
+| `error.log` | Cada excepción capturada (base de datos, POP3/SMTP, errores internos) con su traza completa |
+
+Además, cada comando queda en la tabla `bitacora`.
+
+## Base de datos
+
+PostgreSQL `db_grupo08sa`, esquema **`sislab`** (`sql/01_esquema.sql`). 21 tablas:
+
+| Área | Tablas |
+|---|---|
+| Seguridad (CU1, CU2) | `rol`, `comando`, `rol_comando` (qué comandos puede usar cada rol), `usuario` |
+| Configuración (CU2) | `laboratorio`, `semestre` (solo uno `ACTIVO`), `fecha_bloqueada` |
+| Horarios (CU3) | `materia`, `horario_clase` |
+| Reservas (CU4) | `reserva`, `notificacion` |
+| Permutas y chat (CU5) | `turno`, `permuta`, `mensaje` |
+| Inventario (CU6) | `equipo`, `equipo_red`, `incidencia`, `objeto_encontrado` |
+| Asistencia (CU7) | `asistencia`, `permiso` (y `turno`) |
+| Auditoría | `bitacora` |
+
+```mermaid
+erDiagram
+    rol ||--o{ usuario : tiene
+    rol ||--o{ rol_comando : ""
+    comando ||--o{ rol_comando : ""
+    semestre ||--o{ fecha_bloqueada : ""
+    semestre ||--o{ horario_clase : ""
+    semestre ||--o{ turno : ""
+    laboratorio ||--o{ fecha_bloqueada : "opcional"
+    laboratorio ||--o{ horario_clase : ""
+    laboratorio ||--o{ reserva : ""
+    laboratorio ||--o{ turno : ""
+    laboratorio ||--o{ equipo : ""
+    laboratorio ||--o{ objeto_encontrado : ""
+    materia ||--o{ horario_clase : ""
+    usuario ||--o{ horario_clase : "docente"
+    usuario ||--o{ reserva : "solicita / resuelve"
+    usuario ||--o{ notificacion : recibe
+    reserva ||--o{ notificacion : ""
+    usuario ||--o{ turno : "auxiliar"
+    turno ||--o{ permuta : ""
+    usuario ||--o{ permuta : "solicita / reemplaza / aprueba"
+    usuario ||--o{ mensaje : "envía / recibe"
+    turno ||--o{ asistencia : ""
+    usuario ||--o{ asistencia : ""
+    usuario ||--o{ permiso : ""
+    equipo ||--o| equipo_red : ""
+    equipo ||--o{ incidencia : ""
+    usuario ||--o{ incidencia : reporta
+    usuario ||--o{ objeto_encontrado : registra
+
+    usuario {
+        int id PK
+        string codigo UK
+        string correo UK
+        int rol_id FK
+        string estado
+    }
+    reserva {
+        int id PK
+        int laboratorio_id FK
+        int solicitante_id FK
+        date fecha
+        time hora_inicio
+        time hora_fin
+        string tipo
+        string estado
+    }
+    horario_clase {
+        int id PK
+        int semestre_id FK
+        int laboratorio_id FK
+        int materia_id FK
+        int docente_id FK
+        smallint dia_semana
+        time hora_inicio
+        time hora_fin
+    }
+    asistencia {
+        int id PK
+        int turno_id FK
+        int auxiliar_id FK
+        date fecha
+        string estado
+    }
+```
+
+Reglas principales en la base: códigos y correos únicos, `CHECK` en todos los estados y en que `hora_fin > hora_inicio`,
+un solo semestre activo (índice único parcial) y una asistencia por turno y fecha. El detalle de columnas de cada caso
+de uso está en los archivos `CU*_DISENO_Y_DATOS_*.txt`.
+
 ## Primer uso
 
 1. Copiar `config.example.properties` como `config.properties` y completar las contraseñas.
@@ -58,6 +189,9 @@ En la consola de Windows, para ver bien las tildes: `chcp 65001` y `java -Dfile.
 ## Comandos
 
 Formato del asunto: `COMANDO["param1","param2",...]`; sin parámetros: `COMANDO["*"]`.
+Se toleran espacios extra, minúsculas en el comando, prefijos `Re:`/`Fwd:` y comillas tipográficas (“ ”).
+Para poner una comilla dentro de un parámetro se escapa con `\"` y una barra invertida con `\\`:
+`INSOBJ["LAB-41","Mochila \"Nike\" negra"]`.
 Fechas `AAAA-MM-DD`, horas `HH:MM`, días `LUNES`…`SABADO` o `1`…`6`. Donde se pide un usuario se acepta su código o su correo.
 Roles: `ENC` Encargado, `DOC` Docente, `AUX` Auxiliar, `DIR` Director de Carrera. `AYUDA["*"]` lista los comandos de su rol.
 
