@@ -220,7 +220,10 @@ CREATE TABLE objeto_encontrado (
                  CHECK (estado IN ('EN_CUSTODIA','ENTREGADO')),
   entregado_a    VARCHAR(100),
   ci_receptor    VARCHAR(15),
-  fecha_entrega  TIMESTAMP
+  fecha_entrega  TIMESTAMP,
+  gestion        VARCHAR(10) DEFAULT '2-2026',
+  aux_encontro   VARCHAR(100),   -- auxiliar que encontró el objeto
+  aux_devolvio   VARCHAR(100)    -- auxiliar que lo entregó a su dueño
 );
 
 -- Registro de comandos procesados (todos los CU)
