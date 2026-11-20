@@ -69,4 +69,23 @@ public class ComandoDAO {
         }
         return filas;
     }
+
+    /** Devuelve filas {nombre, roles, descripcion} de todos los comandos con los roles permitidos. */
+    public List<String[]> listarTodosConRoles() throws SQLException {
+        String sql = "SELECT c.nombre, STRING_AGG(r.codigo, ', ' ORDER BY r.id) AS roles, c.descripcion "
+                + "FROM comando c "
+                + "LEFT JOIN rol_comando rc ON rc.comando_id = c.id "
+                + "LEFT JOIN rol r ON r.id = rc.rol_id "
+                + "GROUP BY c.id, c.nombre, c.descripcion "
+                + "ORDER BY c.id";
+        List<String[]> filas = new ArrayList<>();
+        try (Connection cn = Conexion.getConexion(); PreparedStatement ps = cn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                String roles = rs.getString("roles") != null ? rs.getString("roles") : "TODOS";
+                filas.add(new String[]{rs.getString("nombre"), roles, rs.getString("descripcion")});
+            }
+        }
+        return filas;
+    }
 }

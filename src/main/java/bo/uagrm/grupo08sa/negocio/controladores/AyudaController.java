@@ -22,11 +22,10 @@ public class AyudaController {
     }
 
     public Resultado ayuda(Comando comando, Usuario solicitante) throws SQLException {
-        List<String[]> filas = comandoDAO.listarPorRol(solicitante.getRolId());
-        return Resultado.tabla("Comandos disponibles",
-                "Hola " + solicitante.getNombreCompleto() + " (" + solicitante.getRolNombre() + "). "
-                        + "Escriba el comando en el asunto con el formato COMANDO[\"param1\",\"param2\"]; "
-                        + "si no lleva parámetros use COMANDO[\"*\"].",
-                new String[]{"Comando", "Descripción"}, filas);
+        List<String[]> filas = comandoDAO.listarTodosConRoles();
+        return Resultado.tabla("Comandos del Sistema",
+                "Lista completa de comandos clasificados por roles permitidos (ENC: Encargado, DOC: Docente, AUX: Auxiliar, DIR: Director). "
+                        + "Formato: COMANDO[\"param1\",\"param2\"] o COMANDO[\"*\"].",
+                new String[]{"Comando", "Roles", "Descripción"}, filas);
     }
 }
