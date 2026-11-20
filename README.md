@@ -189,7 +189,8 @@ En la consola de Windows, para ver bien las tildes: `chcp 65001` y `java -Dfile.
 ## Comandos
 
 Formato del asunto: `COMANDO["param1","param2",...]`; sin parámetros: `COMANDO["*"]`.
-Se toleran espacios extra, minúsculas en el comando, prefijos `Re:`/`Fwd:` y comillas tipográficas (“ ”).
+Se toleran espacios extra, minúsculas y tildes en el nombre del comando (`aYÚDA` = `AYUDA`), prefijos
+`Re:`/`Fwd:` y comillas tipográficas (“ ”). Los parámetros se conservan tal cual en UTF-8 (ñ, tildes, «», emojis).
 Para poner una comilla dentro de un parámetro se escapa con `\"` y una barra invertida con `\\`:
 `INSOBJ["LAB-41","Mochila \"Nike\" negra"]`.
 Fechas `AAAA-MM-DD`, horas `HH:MM`, días `LUNES`…`SABADO` o `1`…`6`. Donde se pide un usuario se acepta su código o su correo.

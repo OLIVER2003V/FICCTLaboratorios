@@ -27,8 +27,37 @@ public final class Conexion {
     private static long ultimoUso;
     /** true entre iniciarTransaccion() y confirmar()/revertir(): todos los DAO comparten esa transacción. */
     private static boolean enTransaccion;
+    /**
+     * Modo --simular: toda la sesión corre en una sola transacción que se revierte al final.
+     * Cada comando usa un SAVEPOINT en lugar de BEGIN/COMMIT, así se prueban todos los comandos
+     * (incluidos los que dependen de otros) sin dejar cambios en la base.
+     */
+    private static boolean simulacion;
+    private static Savepoint puntoComando;
 
     private Conexion() {
+    }
+
+    /** Activa el modo simulación: nada de lo que se haga desde aquí se guarda. */
+    public static synchronized void activarSimulacion() throws SQLException {
+        getConexion();
+        real.setAutoCommit(false);
+        simulacion = true;
+    }
+
+    /** Deshace todo lo hecho durante la simulación. */
+    public static synchronized void terminarSimulacion() {
+        try {
+            if (real != null && !real.isClosed()) {
+                real.rollback();
+                real.setAutoCommit(true);
+            }
+        } catch (SQLException e) {
+            Log.error("No se pudo revertir la simulación", e);
+            cerrarSilencioso();
+        } finally {
+            simulacion = false;
+        }
     }
 
     public static synchronized Connection getConexion() throws SQLException {
@@ -38,6 +67,13 @@ public final class Conexion {
                 throw new SQLException("Se perdió la conexión con la base de datos durante la transacción.");
             }
             ultimoUso = System.currentTimeMillis();
+            return envolver();
+        }
+        if (simulacion) {
+            // Reconectar perdería todo lo simulado y escribiría en modo autocommit: mejor fallar
+            if (real == null || real.isClosed()) {
+                throw new SQLException("Se perdió la conexión durante la simulación.");
+            }
             return envolver();
         }
         long ahora = System.currentTimeMillis();
@@ -60,14 +96,22 @@ public final class Conexion {
             throw new SQLException("Ya hay una transacción en curso.");
         }
         getConexion();  // asegura una conexión válida antes de empezar
-        real.setAutoCommit(false);
+        if (simulacion) {
+            puntoComando = real.setSavepoint();
+        } else {
+            real.setAutoCommit(false);
+        }
         enTransaccion = true;
     }
 
     /** COMMIT y vuelta al modo autocommit. */
     public static synchronized void confirmar() throws SQLException {
         try {
-            real.commit();
+            if (simulacion) {
+                real.releaseSavepoint(puntoComando);
+            } else {
+                real.commit();
+            }
         } finally {
             terminarTransaccion();
         }
@@ -80,7 +124,11 @@ public final class Conexion {
         }
         try {
             if (real != null && !real.isClosed()) {
-                real.rollback();
+                if (simulacion) {
+                    real.rollback(puntoComando);
+                } else {
+                    real.rollback();
+                }
             }
         } catch (SQLException e) {
             Log.error("No se pudo revertir la transacción", e);
@@ -100,7 +148,7 @@ public final class Conexion {
      * deshacer solo esa operación y seguir con la transacción principal.
      */
     public static void aislado(OperacionBD operacion) throws SQLException {
-        if (!hayTransaccion()) {
+        if (!hayTransaccion() && !simulacion) {
             operacion.ejecutar();
             return;
         }
@@ -121,6 +169,10 @@ public final class Conexion {
 
     private static void terminarTransaccion() {
         enTransaccion = false;
+        puntoComando = null;
+        if (simulacion) {
+            return;  // la sesión simulada sigue en su transacción exterior
+        }
         try {
             if (real != null && !real.isClosed()) {
                 real.setAutoCommit(true);

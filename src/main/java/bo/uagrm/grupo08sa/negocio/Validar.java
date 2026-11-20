@@ -65,7 +65,8 @@ public final class Validar {
         try {
             return Integer.parseInt(valor.trim());
         } catch (NumberFormatException e) {
-            throw new NegocioException("El ID de " + que + " debe ser un número ('" + valor + "' no lo es).");
+            String de = que.startsWith("el ") ? "del " + que.substring(3) : "de " + que;
+            throw new NegocioException("El ID " + de + " debe ser un número ('" + valor + "' no lo es).");
         }
     }
 

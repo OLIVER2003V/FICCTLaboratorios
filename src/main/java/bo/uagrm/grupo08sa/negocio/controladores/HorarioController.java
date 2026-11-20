@@ -103,8 +103,8 @@ public class HorarioController {
         DatosClase d = validar(c.getParametros().toArray(new String[0]), 0, sem.entero("id"), 0);
         int id = horarioDAO.insertar(sem.entero("id"), d.lab().entero("id"), d.materiaId(), d.docente().getId(),
                 d.grupo(), d.dia(), d.inicio(), d.fin());
-        return Resultado.tabla("Clase registrada", "La clase se agregó al horario de " + d.lab().texto("codigo")
-                        + " en el semestre " + sem.texto("gestion") + ".",
+        return Resultado.tabla("Clase registrada", "La clase #" + id + " se agregó al horario de " + d.lab().texto("codigo")
+                        + " en el semestre " + sem.texto("gestion") + ". Use ese ID en MODHOR o ELIHOR.",
                 COLUMNAS, List.<String[]>of(filaMatriz(horarioDAO.buscarPorId(id), true)));
     }
 
@@ -142,7 +142,8 @@ public class HorarioController {
         DatosClase d = validar(c.getParametros().toArray(new String[0]), 1, sem.entero("id"), clase.entero("id"));
         horarioDAO.actualizar(clase.entero("id"), d.lab().entero("id"), d.materiaId(), d.docente().getId(),
                 d.grupo(), d.dia(), d.inicio(), d.fin());
-        return Resultado.tabla("Clase modificada", "Se actualizó la clase en " + d.lab().texto("codigo") + ".",
+        return Resultado.tabla("Clase modificada", "Se actualizó la clase #" + clase.texto("id") + " en "
+                        + d.lab().texto("codigo") + ".",
                 COLUMNAS, List.<String[]>of(filaMatriz(horarioDAO.buscarPorId(clase.entero("id")), true)));
     }
 
@@ -151,7 +152,8 @@ public class HorarioController {
         c.exigirParametros(1, "ELIHOR[\"id\"]");
         Fila clase = buscarClase(c.param(0), buscar.semestreActivo());
         horarioDAO.eliminar(clase.entero("id"));
-        return Resultado.tabla("Clase eliminada", "Se quitó la clase del horario; ese horario queda libre.",
+        return Resultado.tabla("Clase eliminada", "Se quitó la clase #" + clase.texto("id")
+                        + " del horario; ese horario queda libre.",
                 COLUMNAS, List.<String[]>of(filaMatriz(clase, true)));
     }
 
@@ -206,7 +208,20 @@ public class HorarioController {
         }
 
         String detalle = filas.size() + " materia(s)/grupo(s) (" + registros.size() + " sesiones semanales).";
-        return Resultado.tabla(titulo, detalle, COLUMNAS, filas);
+        if (labId == null && dia == null) {
+            return Resultado.tabla(titulo, detalle + " Para ver el ID de cada sesión (MODHOR, ELIHOR) filtre por "
+                    + "laboratorio o día, por ejemplo LISHOR[\"LAB-41\"].", COLUMNAS, filas);
+        }
+        // Filtrado: además de la matriz, cada sesión con su ID para poder modificarla o eliminarla
+        List<String[]> sesiones = new ArrayList<>();
+        for (Fila h : registros) {
+            sesiones.add(new String[]{h.texto("id"), h.texto("lab"), Formato.dia(h.entero("dia_semana")),
+                    Formato.hora(h.hora("hora_inicio")), Formato.hora(h.hora("hora_fin")),
+                    h.texto("sigla"), h.texto("grupo"), h.texto("docente")});
+        }
+        return Resultado.tabla(titulo, detalle, COLUMNAS, filas)
+                .agregarTabla("Sesiones (use el ID en MODHOR o ELIHOR)",
+                        new String[]{"ID", "Lab", "Día", "Inicio", "Fin", "Sigla", "Grupo", "Docente"}, sesiones);
     }
 
     // CONDIS["2026-11-03","08:00","10:00"]  (laboratorios libres en esa franja)

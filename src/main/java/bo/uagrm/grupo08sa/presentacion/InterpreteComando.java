@@ -3,6 +3,7 @@ package bo.uagrm.grupo08sa.presentacion;
 import bo.uagrm.grupo08sa.negocio.Adjunto;
 import bo.uagrm.grupo08sa.negocio.Comando;
 
+import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -17,7 +18,9 @@ import java.util.regex.Pattern;
  */
 public final class InterpreteComando {
 
-    private static final Pattern FORMATO = Pattern.compile("^([A-Za-z]{2,10})\\s*\\[(.*)\\]$", Pattern.DOTALL);
+    /** El nombre admite letras con tilde (aYÚDA): se normaliza después; los parámetros se dejan intactos. */
+    private static final Pattern FORMATO = Pattern.compile("^(\\p{L}{2,10})\\s*\\[(.*)\\]$", Pattern.DOTALL);
+    private static final Pattern MARCAS = Pattern.compile("\\p{M}+");
     private static final Pattern PREFIJO_RESPUESTA =
             Pattern.compile("^((re|rv|fw|fwd|reenviar)\\s*:\\s*)+", Pattern.CASE_INSENSITIVE);
     private static final String AYUDA_FORMATO =
@@ -33,7 +36,9 @@ public final class InterpreteComando {
         if (!m.matches()) {
             throw new FormatoInvalidoException("No se reconoce el asunto '" + asunto + "'." + AYUDA_FORMATO);
         }
-        String nombre = m.group(1).toUpperCase(Locale.ROOT);
+        // Mayúsculas y sin tildes: aYÚDA → AYUDA, lísusu → LISUSU
+        String nombre = MARCAS.matcher(Normalizer.normalize(m.group(1), Normalizer.Form.NFD)).replaceAll("")
+                .toUpperCase(Locale.ROOT);
         List<String> parametros = separarParametros(m.group(2), asunto);
         if (parametros.size() == 1 && parametros.get(0).trim().equals("*")) {
             parametros = List.of();
@@ -45,7 +50,8 @@ public final class InterpreteComando {
     private static String normalizar(String asunto) {
         String texto = asunto == null ? "" : asunto.replace("﻿", "").trim();
         texto = PREFIJO_RESPUESTA.matcher(texto).replaceFirst("");
-        texto = texto.replaceAll("[“”„‟″«»]", "\"").trim();
+        // Solo las comillas que los celulares ponen en lugar de "; « » se dejan como texto del parámetro
+        texto = texto.replaceAll("[“”„‟″]", "\"").trim();
         while (texto.endsWith(";") || texto.endsWith(".")) {
             texto = texto.substring(0, texto.length() - 1).trim();
         }

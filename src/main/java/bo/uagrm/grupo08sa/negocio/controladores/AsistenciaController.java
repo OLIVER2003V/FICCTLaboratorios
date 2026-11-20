@@ -44,7 +44,10 @@ public class AsistenciaController {
     public static final int ANTICIPACION_MIN = 15;
     public static final int TOLERANCIA_PUNTUAL_MIN = 10;
     public static final int TOLERANCIA_FALTA_MIN = 30;
-    private static final String[] COLUMNAS_TURNO = {"Código", "Auxiliar", "Día", "Inicio", "Fin", "Lab"};
+    /** Un turno por fila: el ID es el que piden SOLPMT y los mensajes de choque. */
+    private static final String[] COLUMNAS_TURNO = {"ID turno", "Código", "Auxiliar", "Día", "Inicio", "Fin", "Lab"};
+    /** Resumen del Encargado: los turnos de igual horario se agrupan por días. */
+    private static final String[] COLUMNAS_RESUMEN = {"Código", "Auxiliar", "Días", "Inicio", "Fin", "Lab"};
     private static final String[] COLUMNAS_ASISTENCIA =
             {"Fecha", "Auxiliar", "Turno", "Lab", "Entrada", "Salida", "Estado"};
 
@@ -106,9 +109,22 @@ public class AsistenciaController {
             auxId = c.cantidad() == 1 ? buscar.usuario(c.param(0)).getId() : null;
         }
 
-        // Agrupar turnos por (auxiliar, horario, lab) para que los nombres no se repitan 5 veces
+        List<Fila> turnos = turnoDAO.listar(sem.entero("id"), auxId);
+        if (auxId != null) {
+            // Un solo auxiliar: una fila por turno con su ID (lo necesita SOLPMT)
+            List<String[]> filas = new ArrayList<>();
+            for (Fila t : turnos) {
+                filas.add(filaTurno(t));
+            }
+            String quien = turnos.isEmpty() ? "" : turnos.get(0).texto("auxiliar") + ": ";
+            return Resultado.tabla("Turnos " + sem.texto("gestion"), quien + filas.size() + " turno(s). "
+                    + "Para pedir una permuta use el ID del turno: SOLPMT[\"id_turno\",\"fecha\",\"reemplazante\"].",
+                    COLUMNAS_TURNO, filas);
+        }
+
+        // Resumen general: agrupar turnos por (auxiliar, horario, lab) para que los nombres no se repitan 5 veces
         Map<String, GrupoTurno> grupos = new LinkedHashMap<>();
-        for (Fila t : turnoDAO.listar(sem.entero("id"), auxId)) {
+        for (Fila t : turnos) {
             String clave = t.texto("auxiliar_codigo") + "|" + t.texto("hora_inicio") + "|"
                     + t.texto("hora_fin") + "|" + t.texto("lab");
             grupos.computeIfAbsent(clave, k -> new GrupoTurno(t)).agregarDia(t.entero("dia_semana"));
@@ -118,8 +134,9 @@ public class AsistenciaController {
         for (GrupoTurno g : grupos.values()) {
             filas.add(g.aFila());
         }
-        return Resultado.tabla("Turnos " + sem.texto("gestion"), filas.size() + " auxiliar(es) asignado(s).",
-                COLUMNAS_TURNO, filas);
+        return Resultado.tabla("Turnos " + sem.texto("gestion"), filas.size() + " franja(s) asignada(s). "
+                        + "Vea los ID de turno de un auxiliar con LISTUR[\"codigo\"].",
+                COLUMNAS_RESUMEN, filas);
     }
 
     // MARENT["*"]
@@ -304,9 +321,10 @@ public class AsistenciaController {
 
     private static String[] filaTurno(Fila t) {
         return new String[]{
+                t.texto("id"),
                 t.texto("auxiliar_codigo"),
                 t.texto("auxiliar"),
-                abreviaturaDia(t.entero("dia_semana")),
+                Formato.dia(t.entero("dia_semana")),
                 Formato.hora(t.hora("hora_inicio")),
                 Formato.hora(t.hora("hora_fin")),
                 t.texto("lab").isEmpty() ? "General" : t.texto("lab")

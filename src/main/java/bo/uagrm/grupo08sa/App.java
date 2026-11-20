@@ -26,6 +26,7 @@ public class App {
             case "" -> new ProcesadorCorreo().iniciar();
             case "--una-vez" -> new ProcesadorCorreo().revisarBuzon();
             case "--local" -> new ConsolaLocal().iniciar();
+            case "--simular" -> simular();
             case "--probar" -> probarConexiones();
             case "--crear-bd" -> crearBaseDeDatos();
             case "--cargar-turnos" -> cargarTurnos();
@@ -49,6 +50,18 @@ public class App {
             case "--reiniciar-bd" -> reiniciarBaseDeDatos();
             default -> System.out.println("Modo desconocido: " + modo
                     + ". Use --una-vez, --local, --probar, --crear-bd, --cargar-turnos, --cargar-permutas, --actualizar-inventario, --restaurar-objetos, --cargar-incidencias, --cargar-directores, --cargar-bloqueos, --verificar-tablas o --reiniciar-bd.");
+        }
+    }
+
+    /** Como --local, pero al salir se deshace todo: sirve para ensayar comandos sin tocar los datos reales. */
+    private static void simular() throws Exception {
+        bo.uagrm.grupo08sa.datos.Conexion.activarSimulacion();
+        System.out.println("*** MODO SIMULACIÓN: ningún cambio se guardará en la base de datos ***");
+        try {
+            new ConsolaLocal().iniciar();
+        } finally {
+            bo.uagrm.grupo08sa.datos.Conexion.terminarSimulacion();
+            System.out.println("*** Simulación terminada: se revirtieron todos los cambios ***");
         }
     }
 
