@@ -1,8 +1,11 @@
 package bo.uagrm.grupo08sa.datos.dao;
 
+import bo.uagrm.grupo08sa.datos.Conexion;
 import bo.uagrm.grupo08sa.datos.Fila;
 
+import java.sql.Connection;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
@@ -14,10 +17,27 @@ public class ReservaDAO extends BaseDAO {
             + "u.nombre || ' ' || u.apellido AS solicitante FROM reserva r "
             + "JOIN laboratorio l ON l.id = r.laboratorio_id JOIN usuario u ON u.id = r.solicitante_id ";
 
-    public int insertar(int laboratorioId, int solicitanteId, LocalDate fecha, LocalTime inicio, LocalTime fin,
+    public synchronized int insertar(int laboratorioId, int solicitanteId, LocalDate fecha, LocalTime inicio, LocalTime fin,
                         String tipo, String motivo) throws SQLException {
-        return insertar("INSERT INTO reserva (laboratorio_id, solicitante_id, fecha, hora_inicio, hora_fin, tipo, motivo) "
+        int idGenerado = super.insertar("INSERT INTO reserva (laboratorio_id, solicitante_id, fecha, hora_inicio, hora_fin, tipo, motivo) "
                 + "VALUES (?, ?, ?, ?, ?, ?, ?)", laboratorioId, solicitanteId, fecha, inicio, fin, tipo, motivo);
+        reordenarIdsCronologicamente();
+        Fila r = consultarUno("SELECT id FROM reserva WHERE laboratorio_id = ? AND solicitante_id = ? AND fecha = ? AND hora_inicio = ? AND hora_fin = ? ORDER BY id DESC LIMIT 1",
+                laboratorioId, solicitanteId, fecha, inicio, fin);
+        return r != null ? r.entero("id") : idGenerado;
+    }
+
+    public synchronized void reordenarIdsCronologicamente() throws SQLException {
+        try (Connection cn = Conexion.getConexion(); Statement st = cn.createStatement()) {
+            st.execute("ALTER TABLE notificacion DROP CONSTRAINT IF EXISTS notificacion_reserva_id_fkey; "
+                    + "ALTER TABLE notificacion ADD CONSTRAINT notificacion_reserva_id_fkey FOREIGN KEY (reserva_id) REFERENCES reserva(id) ON UPDATE CASCADE ON DELETE SET NULL; "
+                    + "DROP TABLE IF EXISTS tmp_orden_reserva; "
+                    + "CREATE TEMP TABLE tmp_orden_reserva AS SELECT id AS id_antiguo, ROW_NUMBER() OVER (ORDER BY fecha ASC, hora_inicio ASC, id ASC) AS id_nuevo FROM reserva; "
+                    + "UPDATE reserva r SET id = -t.id_nuevo FROM tmp_orden_reserva t WHERE r.id = t.id_antiguo; "
+                    + "UPDATE reserva SET id = -id WHERE id < 0; "
+                    + "SELECT setval('sislab.reserva_id_seq', COALESCE((SELECT MAX(id) FROM reserva), 1)); "
+                    + "DROP TABLE IF EXISTS tmp_orden_reserva;");
+        }
     }
 
     public Fila buscarPorId(int id) throws SQLException {
